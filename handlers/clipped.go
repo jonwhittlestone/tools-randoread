@@ -97,6 +97,7 @@ func (h *ClippedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
 		"title": note.FormatVaultTitle(mostRecent.Path, h.VaultRoot),
 		"html":  html,
+		"path":  mostRecent.Path,
 	})
 }
 

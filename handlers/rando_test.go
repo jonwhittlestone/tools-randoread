@@ -61,12 +61,16 @@ func TestHandleRandoPicksAMarkdownFile(t *testing.T) {
 	var body struct {
 		Title string `json:"title"`
 		HTML  string `json:"html"`
+		Path  string `json:"path"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if body.Title != "books / 2026 / happier-child-with-pda / main" {
 		t.Errorf("unexpected title: %q", body.Title)
+	}
+	if body.Path != "/DropsyncFiles/jw-mind/books/2026/happier-child-with-pda/main.md" {
+		t.Errorf("expected the chosen note's path so it can be emailed, got %q", body.Path)
 	}
 }
 

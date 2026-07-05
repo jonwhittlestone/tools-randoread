@@ -45,6 +45,7 @@ func TestHandleDailyRendersTodaysNote(t *testing.T) {
 	var body struct {
 		Title string `json:"title"`
 		HTML  string `json:"html"`
+		Path  string `json:"path"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -54,6 +55,9 @@ func TestHandleDailyRendersTodaysNote(t *testing.T) {
 	}
 	if body.HTML == "" || !strings.Contains(body.HTML, "<h2>Hello</h2>") {
 		t.Errorf("expected rendered HTML, got %q", body.HTML)
+	}
+	if body.Path != "/DropsyncFiles/jw-mind/periodic/daily/2026-07-05-W27-Sun.md" {
+		t.Errorf("expected the full dropbox path so the note can be emailed, got %q", body.Path)
 	}
 }
 

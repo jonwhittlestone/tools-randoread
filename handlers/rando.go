@@ -130,6 +130,7 @@ func (h *RandoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
 		"title": note.FormatVaultTitle(chosen.Path, h.VaultRoot),
 		"html":  html,
+		"path":  chosen.Path,
 	})
 }
 
