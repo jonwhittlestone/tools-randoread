@@ -71,6 +71,11 @@ func newMux(cfg Config) http.Handler {
 	mux.Handle("GET /api/rando", randoHandler)
 	mux.HandleFunc("GET /api/rando/status", randoHandler.HandleStatus)
 
+	clippedStore := state.NewCooldownStore(filepath.Join(cfg.DataDir, "clipped_cooldown.json"))
+	clippedHandler := handlers.NewClippedHandler(dropboxClient, dropboxClient, cfg.VaultRoot, clippedStore, nil)
+	mux.Handle("GET /api/clipped", clippedHandler)
+	mux.HandleFunc("GET /api/clipped/status", clippedHandler.HandleStatus)
+
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatal(err)
