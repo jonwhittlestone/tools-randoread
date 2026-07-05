@@ -14,7 +14,7 @@ func newTestDropboxConnect(t *testing.T) *DropboxConnect {
 	t.Helper()
 	store := dropbox.NewStore(filepath.Join(t.TempDir(), "tokens.json"))
 	client := dropbox.NewClient("app-key", store)
-	return NewDropboxConnect(client, "https://example.com/api/dropbox/callback")
+	return NewDropboxConnect(client, "https://example.com/api/dropbox/callback", "https://example.com/randoread/")
 }
 
 func TestHandleAuthRedirectsToDropbox(t *testing.T) {
@@ -70,6 +70,13 @@ func TestHandleCallbackExchangesCodeAndSavesTokens(t *testing.T) {
 
 	if rec.Code != http.StatusFound {
 		t.Fatalf("expected 302 redirect after connecting, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Regression: this must be the app's full external URL (including the
+	// Traefik /randoread path prefix), not a bare "/" — our server has no
+	// visibility into that prefix (Traefik strips it), but the browser's
+	// Location-header navigation does, so a bare "/" 404s at the domain root.
+	if loc := rec.Header().Get("Location"); loc != "https://example.com/randoread/" {
+		t.Fatalf("expected redirect to the app's public URL, got %q", loc)
 	}
 
 	tokens, err := dc.client.Store.Load()
