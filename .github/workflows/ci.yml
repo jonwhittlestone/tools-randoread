@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - run: go mod download
+
+      - run: go build ./...
+
+      - run: go test ./... -v -cover
+        env:
+          AUTH_TOKEN: ci-test-token
+          AUTH_TOKEN_ISSUED_AT: 2026-01-01T00:00:00Z

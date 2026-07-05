@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  randoread:
+    build: .
+    network_mode: host
+    environment:
+      - PORT=8085
+      - AUTH_TOKEN=${AUTH_TOKEN}
+      - AUTH_TOKEN_ISSUED_AT=${AUTH_TOKEN_ISSUED_AT}
+      - DROPBOX_APP_KEY=${DROPBOX_APP_KEY}
+      - DROPBOX_REDIRECT_URI=${DROPBOX_REDIRECT_URI}
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASS=${EMAIL_PASS}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+    volumes:
+      - ./data:/app/data:Z
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

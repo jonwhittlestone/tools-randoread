@@ -1,0 +1,31 @@
+http:
+  routers:
+    randoread:
+      rule: "Host(`howapped.zapto.org`) && PathPrefix(`/randoread`)"
+      entryPoints:
+        - web
+      middlewares:
+        - https-redirect
+      service: randoread-service
+
+    randoread-secure:
+      rule: "Host(`howapped.zapto.org`) && PathPrefix(`/randoread`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - randoread-strip-prefix
+      service: randoread-service
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    randoread-strip-prefix:
+      stripPrefix:
+        prefixes:
+          - "/randoread"
+
+  services:
+    randoread-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.containers.internal:8085"
