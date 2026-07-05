@@ -15,6 +15,14 @@ type DropboxConnect struct {
 	client      *dropbox.Client
 	redirectURI string
 
+	// appURL is randoread's full external URL, including the Traefik
+	// /randoread path prefix (e.g. "https://howapped.zapto.org/randoread/").
+	// Needed because our server never sees that prefix (Traefik strips it),
+	// but a Location-header redirect is resolved by the browser, which does
+	// see it — a bare "/" would send the browser to the domain root instead
+	// of back into the app.
+	appURL string
+
 	// pendingVerifier holds the PKCE code verifier between /auth and
 	// /callback. This is a single-user, single-instance app (like
 	// tools-browsernotes' equivalent in-memory state), so a single field is
@@ -23,9 +31,10 @@ type DropboxConnect struct {
 }
 
 // NewDropboxConnect builds a DropboxConnect using client for Dropbox API
-// calls, redirecting back to redirectURI after the user authorizes.
-func NewDropboxConnect(client *dropbox.Client, redirectURI string) *DropboxConnect {
-	return &DropboxConnect{client: client, redirectURI: redirectURI}
+// calls, redirecting back to redirectURI after the user authorizes, and
+// bouncing the browser back to appURL once tokens are saved.
+func NewDropboxConnect(client *dropbox.Client, redirectURI, appURL string) *DropboxConnect {
+	return &DropboxConnect{client: client, redirectURI: redirectURI, appURL: appURL}
 }
 
 // HandleAuth serves GET /api/dropbox/auth — redirects the browser to
@@ -68,7 +77,7 @@ func (dc *DropboxConnect) HandleCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, dc.appURL, http.StatusFound)
 }
 
 // HandleStatus serves GET /api/dropbox/status.

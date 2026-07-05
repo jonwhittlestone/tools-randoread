@@ -68,7 +68,7 @@ func newMux(cfg Config) http.Handler {
 
 	tokenStore := dropbox.NewStore(filepath.Join(cfg.DataDir, "dropbox_tokens.json"))
 	dropboxClient := dropbox.NewClient(cfg.DropboxAppKey, tokenStore)
-	dropboxConnect := handlers.NewDropboxConnect(dropboxClient, cfg.DropboxRedirectURI)
+	dropboxConnect := handlers.NewDropboxConnect(dropboxClient, cfg.DropboxRedirectURI, cfg.PublicBaseURL)
 	mux.HandleFunc("GET /api/dropbox/auth", dropboxConnect.HandleAuth)
 	mux.HandleFunc("GET /api/dropbox/callback", dropboxConnect.HandleCallback)
 	mux.HandleFunc("GET /api/dropbox/status", dropboxConnect.HandleStatus)
