@@ -7,7 +7,7 @@ PORT?=8080
 
 run:
 	@echo "Starting randoread on :$(PORT)..."
-	@PORT=$(PORT) go run .
+	@AUTH_TOKEN=$${AUTH_TOKEN:-devtoken} AUTH_TOKEN_ISSUED_AT=$${AUTH_TOKEN_ISSUED_AT:-2026-01-01T00:00:00Z} PORT=$(PORT) go run .
 
 # NOTE: this repo lives in a Dropbox-synced folder on Jon's machines. Avoid
 # running `make build` from a Dropbox-synced checkout — the compiled binary
@@ -35,8 +35,13 @@ clean:
 
 ## ── Smoke tests (server must be running) ───────────────────────────────────
 
+TOKEN?=devtoken
+
 health:
 	curl -s http://localhost:$(PORT)/health | jq .
+
+auth:
+	curl -s "http://localhost:$(PORT)/api/auth?token=$(TOKEN)" | jq .
 
 ## ── Docker ─────────────────────────────────────────────────────────────────
 
