@@ -24,7 +24,7 @@ func TestDailyFilename(t *testing.T) {
 	}
 }
 
-func TestFormatRandoTitle(t *testing.T) {
+func TestFormatVaultTitle(t *testing.T) {
 	cases := []struct {
 		path      string
 		vaultRoot string
@@ -43,8 +43,8 @@ func TestFormatRandoTitle(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		if got := FormatRandoTitle(c.path, c.vaultRoot); got != c.want {
-			t.Errorf("FormatRandoTitle(%q, %q) = %q, want %q", c.path, c.vaultRoot, got, c.want)
+		if got := FormatVaultTitle(c.path, c.vaultRoot); got != c.want {
+			t.Errorf("FormatVaultTitle(%q, %q) = %q, want %q", c.path, c.vaultRoot, got, c.want)
 		}
 	}
 }

@@ -13,11 +13,13 @@ import (
 )
 
 type fakeLister struct {
-	entries []dropbox.Entry
-	err     error
+	entries    []dropbox.Entry
+	err        error
+	calledPath string
 }
 
 func (f *fakeLister) ListFolder(path string, recursive bool) ([]dropbox.Entry, error) {
+	f.calledPath = path
 	return f.entries, f.err
 }
 

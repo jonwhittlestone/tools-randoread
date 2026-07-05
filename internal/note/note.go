@@ -14,10 +14,10 @@ func DailyFilename(t time.Time) string {
 	return fmt.Sprintf("%s-W%02d-%s.md", t.Format("2006-01-02"), week, t.Format("Mon"))
 }
 
-// FormatRandoTitle turns a full Dropbox path into the vault-relative,
-// slash-separated title shown for a random note, e.g.
+// FormatVaultTitle turns a full Dropbox path into the vault-relative,
+// slash-separated title shown for Rando/Clipped notes, e.g.
 // "/DropsyncFiles/jw-mind/books/2026/main.md" -> "books / 2026 / main".
-func FormatRandoTitle(path, vaultRoot string) string {
+func FormatVaultTitle(path, vaultRoot string) string {
 	rel := strings.TrimPrefix(path, vaultRoot)
 	rel = strings.TrimPrefix(rel, "/")
 	rel = strings.TrimSuffix(rel, ".md")
