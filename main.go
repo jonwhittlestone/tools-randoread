@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"testing"
 	"time"
 
 	"github.com/jonwhittlestone/tools-randoread/handlers"
@@ -79,10 +80,20 @@ func newMux(cfg Config) http.Handler {
 	assetHandler := handlers.NewAssetHandler(dropboxClient, cfg.VaultRoot)
 	mux.Handle("GET /api/asset", assetHandler)
 
-	randoHandler := handlers.NewRandoHandler(dropboxClient, dropboxClient, cfg.VaultRoot, nil, nil)
+	// A full recursive vault listing is slow (many paginated Dropbox round
+	// trips) and doesn't need to be fresher than this — Rando/Clipped share
+	// one cache so it's warmed by whichever gets clicked first.
+	vaultListCache := dropbox.NewCachedLister(dropboxClient, vaultListCacheTTL)
+	if !testing.Testing() {
+		// Avoid firing real Dropbox network calls from unit tests, which
+		// build a mux with a fake app key/no tokens via this same path.
+		go warmVaultListCache(vaultListCache, cfg.VaultRoot)
+	}
+
+	randoHandler := handlers.NewRandoHandler(dropboxClient, vaultListCache, cfg.VaultRoot, nil, nil)
 	mux.Handle("GET /api/rando", randoHandler)
 
-	clippedHandler := handlers.NewClippedHandler(dropboxClient, dropboxClient, cfg.VaultRoot, nil)
+	clippedHandler := handlers.NewClippedHandler(dropboxClient, vaultListCache, cfg.VaultRoot, nil)
 	mux.Handle("GET /api/clipped", clippedHandler)
 
 	smtpConfig := mail.Config{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.EmailUser, Password: cfg.EmailPass}
@@ -104,6 +115,24 @@ func newMux(cfg Config) http.Handler {
 // defaultVaultRoot matches tools-browsernotes' DEFAULT_VAULT_ROOT — both
 // services read the same Dropbox-synced Obsidian vault.
 const defaultVaultRoot = "/DropsyncFiles/jw-mind"
+
+// vaultListCacheTTL controls how long a recursive vault listing is reused
+// before Rando/Clipped re-list Dropbox. Doesn't need to be fresher than this
+// for a personal vault that changes gradually over a day.
+const vaultListCacheTTL = 24 * time.Hour
+
+// warmVaultListCache pre-populates the cache at startup so the very first
+// Rando/Clipped click isn't the one paying for a slow recursive listing.
+// Best-effort: if Dropbox isn't connected yet, this just fails silently —
+// the next real click (or the next server restart) tries again.
+func warmVaultListCache(cache *dropbox.CachedLister, vaultRoot string) {
+	if _, err := cache.ListFolder(vaultRoot, true); err != nil {
+		log.Printf("vault list cache warmup (vault root) failed, will retry on next request: %v", err)
+	}
+	if _, err := cache.ListFolder(vaultRoot+handlers.ClippingsSubpath, true); err != nil {
+		log.Printf("vault list cache warmup (Clippings) failed, will retry on next request: %v", err)
+	}
+}
 
 const (
 	defaultPublicBaseURL = "https://howapped.zapto.org/randoread/"

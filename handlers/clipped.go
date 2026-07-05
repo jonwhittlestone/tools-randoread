@@ -9,9 +9,9 @@ import (
 	"github.com/jonwhittlestone/tools-randoread/internal/note"
 )
 
-// clippingsSubpath is where web clippings live within the vault — see the
+// ClippingsSubpath is where web clippings live within the vault — see the
 // vault's CLAUDE.md ("Clippings/ - Web clippings and saved articles").
-const clippingsSubpath = "/Clippings"
+const ClippingsSubpath = "/Clippings"
 
 // ClippedHandler serves the most recently modified note in the vault's
 // Clippings/ folder. Clickable at any time — no cooldown (removed per
@@ -32,7 +32,7 @@ func NewClippedHandler(downloader NoteDownloader, lister NoteLister, vaultRoot s
 }
 
 func (h *ClippedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	entries, err := h.Lister.ListFolder(h.VaultRoot+clippingsSubpath, true)
+	entries, err := h.Lister.ListFolder(h.VaultRoot+ClippingsSubpath, true)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "failed to list clippings")
 		return
