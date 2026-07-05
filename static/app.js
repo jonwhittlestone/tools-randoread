@@ -7,6 +7,7 @@
   const loginScreen = document.getElementById("login-screen");
   const app = document.getElementById("app");
   const dailyButton = document.getElementById("daily-button");
+  const randoButton = document.getElementById("rando-button");
   const noteTitle = document.getElementById("note-title");
   const noteContent = document.getElementById("note-content");
   const menuButton = document.getElementById("menu-button");
@@ -79,6 +80,51 @@
 
   dailyButton.addEventListener("click", loadDaily);
 
+  function formatRetryAfter(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return "Available in " + hours + "h " + minutes + "m";
+  }
+
+  async function refreshRandoStatus() {
+    try {
+      const res = await authedFetch("api/rando/status");
+      const data = await res.json();
+      randoButton.disabled = data.onCooldown;
+      randoButton.title = data.onCooldown ? formatRetryAfter(data.retryAfterSeconds) : "";
+    } catch (e) {
+      // leave the button as-is; loadRando() will surface any real error
+    }
+  }
+
+  async function loadRando() {
+    noteTitle.textContent = "Loading…";
+    noteContent.innerHTML = "";
+    try {
+      const res = await authedFetch("api/rando");
+      const data = await res.json();
+      if (res.status === 429) {
+        noteTitle.textContent = "";
+        noteContent.textContent = "Rando is on cooldown — " + formatRetryAfter(data.retryAfterSeconds).toLowerCase();
+        refreshRandoStatus();
+        return;
+      }
+      if (!res.ok) {
+        noteTitle.textContent = "";
+        noteContent.textContent = data.error || "Failed to load a random note.";
+        return;
+      }
+      noteTitle.textContent = data.title;
+      noteContent.innerHTML = data.html;
+      refreshRandoStatus();
+    } catch (e) {
+      noteTitle.textContent = "";
+      noteContent.textContent = "Failed to load a random note.";
+    }
+  }
+
+  randoButton.addEventListener("click", loadRando);
+
   function storedTokenIsValid() {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY);
     const expiresAt = localStorage.getItem(STORAGE_EXPIRES_KEY);
@@ -123,6 +169,7 @@
     if (loggedInFromURL || storedTokenIsValid()) {
       showApp();
       loadDaily();
+      refreshRandoStatus();
     } else {
       showLogin();
     }

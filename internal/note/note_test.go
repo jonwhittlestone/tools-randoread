@@ -23,3 +23,28 @@ func TestDailyFilename(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatRandoTitle(t *testing.T) {
+	cases := []struct {
+		path      string
+		vaultRoot string
+		want      string
+	}{
+		{
+			"/DropsyncFiles/jw-mind/books/2026/happier-child-with-pda/main.md",
+			"/DropsyncFiles/jw-mind",
+			"books / 2026 / happier-child-with-pda / main",
+		},
+		{
+			"/DropsyncFiles/jw-mind/projects/25-handyman.md",
+			"/DropsyncFiles/jw-mind",
+			"projects / 25-handyman",
+		},
+	}
+
+	for _, c := range cases {
+		if got := FormatRandoTitle(c.path, c.vaultRoot); got != c.want {
+			t.Errorf("FormatRandoTitle(%q, %q) = %q, want %q", c.path, c.vaultRoot, got, c.want)
+		}
+	}
+}
