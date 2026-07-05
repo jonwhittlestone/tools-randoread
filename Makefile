@@ -1,4 +1,4 @@
-.PHONY: run build test test-cover fmt lint clean docker-build docker-up docker-down deploy health
+.PHONY: run build test test-cover fmt lint clean docker-build docker-up docker-down deploy health auth daily rando clipped dropbox-status
 
 BINARY=bin/randoread
 PORT?=8080
@@ -42,6 +42,18 @@ health:
 
 auth:
 	curl -s "http://localhost:$(PORT)/api/auth?token=$(TOKEN)" | jq .
+
+daily:
+	curl -s -H "X-Auth-Token: $(TOKEN)" "http://localhost:$(PORT)/api/daily" | jq .
+
+rando:
+	curl -s -H "X-Auth-Token: $(TOKEN)" "http://localhost:$(PORT)/api/rando" | jq .
+
+clipped:
+	curl -s -H "X-Auth-Token: $(TOKEN)" "http://localhost:$(PORT)/api/clipped" | jq .
+
+dropbox-status:
+	curl -s -H "X-Auth-Token: $(TOKEN)" "http://localhost:$(PORT)/api/dropbox/status" | jq .
 
 ## ── Docker ─────────────────────────────────────────────────────────────────
 

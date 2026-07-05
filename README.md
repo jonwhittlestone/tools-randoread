@@ -1,17 +1,28 @@
 # tools-randoread
 
 A small Go webservice that reads notes from a Dropbox-synced Obsidian vault
-(`jw-mind`) and renders them in the browser.
+(`jw-mind`) and renders them in the browser, styled with a "Dark Moss"
+GitHub-like dark theme.
 
-Two modes:
-- **Daily** — fetches today's daily note (`periodic/daily/YYYY-MM-DD-[W]WW-ddd.md`).
+## Features
+
+- **Daily 📅** — fetches today's daily note
+  (`periodic/daily/YYYY-MM-DD-[W]WW-ddd.md`). Title shown is the bare
+  filename.
 - **Rando ♻** — fetches a random note from anywhere in the vault. Limited to
-  once every 24 hours.
-
-Notes render as styled HTML (a "Dark Moss" GitHub-like dark theme), with
-relative Obsidian image embeds (`![[file.png]]`) and standard markdown
-links/images rendered inline. A burger menu lets you email the currently
-open note as an HTML embed.
+  once every 24 hours; the button disables itself with a countdown while on
+  cooldown. Title shown is the vault-relative path (e.g.
+  `books / 2026 / main`).
+- **Clipped ✂️** — fetches the most recently modified article from the
+  vault's `Clippings/` folder. Same 24h cooldown as Rando, tracked
+  independently.
+- **Email this note** (burger menu, ☰) — emails the currently displayed note
+  as an HTML-embedded message to `jon@howapped.com` (configurable), images
+  included.
+- Obsidian-flavored markdown rendering: relative image embeds
+  (`![[file.png]]`) resolve against the vault's `assets/` folder, standard
+  markdown links/images render normally, bare URLs autolink, GFM
+  tables/tasklists supported.
 
 ## Usage
 
@@ -28,6 +39,18 @@ The token is stored in browser localStorage and is valid for 90 days from
 issue. See `04 Development` in `main-randoread.md` for the current login
 link.
 
+## Connecting Dropbox
+
+Dropbox access is self-service — no token files need to be placed on the
+server. Open the burger menu (☰) → "Connect Dropbox" and authorize access;
+the service stores a refresh token on the server (`data/dropbox_tokens.json`)
+and renews it automatically. "Disconnect Dropbox" clears it.
+
+This reuses tools-browsernotes' existing Dropbox app registration (same
+vault, same app key) — only a redirect URI needs to be added once in the
+[Dropbox App Console](https://www.dropbox.com/developers/apps):
+`https://howapped.zapto.org/randoread/api/dropbox/callback`.
+
 ## Local development
 
 Requires Go 1.22+.
@@ -43,11 +66,23 @@ from a Dropbox-synced checkout of this repo — the compiled binary would get
 synced across machines. It's fine from CI or the copy rsynced to
 doylestonex during deploy.
 
-## Connecting Dropbox
+### Architecture
 
-Dropbox access is self-service — no token files need to be placed on the
-server. Open the burger menu → "Connect Dropbox" and authorize access; the
-service stores a refresh token on the server and renews it automatically.
+```
+main.go                — mux wiring, go:embed static/, env config
+handlers/               — one file per HTTP concern (auth, daily, rando,
+                          clipped, asset, email, dropbox connect)
+internal/dropbox/       — Dropbox HTTP API client (OAuth2+PKCE, download,
+                          list_folder), no third-party SDK
+internal/markdown/      — goldmark-based renderer + Obsidian preprocessing
+internal/note/          — vault path/title formatting
+internal/state/         — 24h-cooldown persistence (JSON file)
+internal/mail/          — SMTP sending
+static/                 — vanilla JS/CSS single-page app, no build step
+```
+
+Single third-party Go dependency: `goldmark` (pure Go, no CGO). Everything
+else is stdlib.
 
 ## Deploying
 
@@ -60,4 +95,17 @@ already present at `/home/admin/www/tools-randoread/.env` on the host.
 
 ## Environment variables
 
-See `.env.example`.
+See `.env.example`. Notable ones:
+
+- `AUTH_TOKEN` / `AUTH_TOKEN_ISSUED_AT` — the login token and when it was
+  issued (90-day expiry computed from this).
+- `DROPBOX_APP_KEY` / `DROPBOX_REDIRECT_URI` — public OAuth client ID and
+  callback URL (see "Connecting Dropbox" above).
+- `VAULT_ROOT` — Dropbox path to the vault (defaults to
+  `/DropsyncFiles/jw-mind`).
+- `PUBLIC_BASE_URL` — randoread's externally visible URL, used to build
+  absolute image URLs in emails.
+- `EMAIL_USER` / `EMAIL_PASS` / `SMTP_HOST` / `SMTP_PORT` / `EMAIL_TO` /
+  `EMAIL_FROM` — outbound mail settings (Gmail app password by default).
+- `DATA_DIR` — where the Dropbox token file and cooldown state persist
+  (mounted volume in production).
