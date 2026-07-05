@@ -11,6 +11,7 @@ import (
 
 	"github.com/jonwhittlestone/tools-randoread/handlers"
 	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
+	"github.com/jonwhittlestone/tools-randoread/internal/state"
 )
 
 //go:embed static
@@ -64,6 +65,11 @@ func newMux(cfg Config) http.Handler {
 
 	assetHandler := handlers.NewAssetHandler(dropboxClient, cfg.VaultRoot)
 	mux.Handle("GET /api/asset", assetHandler)
+
+	randoStore := state.NewCooldownStore(filepath.Join(cfg.DataDir, "rando_cooldown.json"))
+	randoHandler := handlers.NewRandoHandler(dropboxClient, dropboxClient, cfg.VaultRoot, randoStore, nil, nil)
+	mux.Handle("GET /api/rando", randoHandler)
+	mux.HandleFunc("GET /api/rando/status", randoHandler.HandleStatus)
 
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
