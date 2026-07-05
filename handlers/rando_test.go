@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +92,29 @@ func TestHandleRandoExcludesConflictedCopies(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
 	if body.Title != "notes / idea" {
 		t.Errorf("expected the non-conflicted copy to be chosen, got title %q", body.Title)
+	}
+}
+
+func TestHandleRandoImageURLIncludesAuthToken(t *testing.T) {
+	downloader := &fakeDownloader{files: map[string][]byte{
+		"/DropsyncFiles/jw-mind/a.md": []byte("![[photo.jpg]]"),
+	}}
+	entries := []dropbox.Entry{mdEntry("/DropsyncFiles/jw-mind/a.md")}
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	h := NewRandoHandler(downloader, &fakeLister{entries: entries}, "/DropsyncFiles/jw-mind", func() time.Time { return now }, func(int) int { return 0 })
+	h.AuthToken = "secret-token"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/rando", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		HTML string `json:"html"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body.HTML, "token=secret-token") {
+		t.Fatalf("expected the image URL to include the auth token, got: %s", body.HTML)
 	}
 }
 

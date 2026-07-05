@@ -21,6 +21,9 @@ type ClippedHandler struct {
 	Lister     NoteLister
 	VaultRoot  string
 	Now        func() time.Time
+
+	// AuthToken is embedded in resolved image URLs — see assetImageResolver.
+	AuthToken string
 }
 
 // NewClippedHandler builds a ClippedHandler. now defaults to time.Now if nil.
@@ -57,7 +60,7 @@ func (h *ClippedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html := markdown.Render(raw, assetImageResolver(h.VaultRoot))
+	html := markdown.Render(raw, assetImageResolver(h.VaultRoot, h.AuthToken))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck

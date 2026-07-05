@@ -21,6 +21,11 @@ type DailyHandler struct {
 	Downloader NoteDownloader
 	VaultRoot  string
 	Now        func() time.Time
+
+	// AuthToken is embedded in resolved image URLs — <img> tags can't send
+	// the X-Auth-Token header, so this rides along as the query-param
+	// fallback RequireToken accepts instead. See assetImageResolver.
+	AuthToken string
 }
 
 // NewDailyHandler builds a DailyHandler. now defaults to time.Now if nil.
@@ -36,10 +41,15 @@ func NewDailyHandler(downloader NoteDownloader, vaultRoot string, now func() tim
 // attachment location — see the vault's CLAUDE.md). It doesn't verify the
 // file exists; a missing asset just renders as a broken image, same as any
 // other dead <img> link.
-func assetImageResolver(vaultRoot string) markdown.ImageResolver {
+//
+// authToken is embedded as a query param because the browser requests this
+// URL directly via <img src>, which can't carry the X-Auth-Token header —
+// RequireToken accepts either (see handlers/auth.go).
+func assetImageResolver(vaultRoot, authToken string) markdown.ImageResolver {
 	return func(filename string) (string, bool) {
 		path := vaultRoot + "/assets/" + filename
-		return "api/asset?path=" + url.QueryEscape(path), true
+		q := url.Values{"path": {path}, "token": {authToken}}
+		return "api/asset?" + q.Encode(), true
 	}
 }
 
@@ -55,7 +65,7 @@ func (h *DailyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html := markdown.Render(raw, assetImageResolver(h.VaultRoot))
+	html := markdown.Render(raw, assetImageResolver(h.VaultRoot, h.AuthToken))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck

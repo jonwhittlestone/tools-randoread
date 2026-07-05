@@ -75,6 +75,7 @@ func newMux(cfg Config) http.Handler {
 	mux.HandleFunc("POST /api/dropbox/disconnect", dropboxConnect.HandleDisconnect)
 
 	dailyHandler := handlers.NewDailyHandler(dropboxClient, cfg.VaultRoot, nil)
+	dailyHandler.AuthToken = cfg.AuthToken
 	mux.Handle("GET /api/daily", dailyHandler)
 
 	assetHandler := handlers.NewAssetHandler(dropboxClient, cfg.VaultRoot)
@@ -91,9 +92,11 @@ func newMux(cfg Config) http.Handler {
 	}
 
 	randoHandler := handlers.NewRandoHandler(dropboxClient, vaultListCache, cfg.VaultRoot, nil, nil)
+	randoHandler.AuthToken = cfg.AuthToken
 	mux.Handle("GET /api/rando", randoHandler)
 
 	clippedHandler := handlers.NewClippedHandler(dropboxClient, vaultListCache, cfg.VaultRoot, nil)
+	clippedHandler.AuthToken = cfg.AuthToken
 	mux.Handle("GET /api/clipped", clippedHandler)
 
 	smtpConfig := mail.Config{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.EmailUser, Password: cfg.EmailPass}

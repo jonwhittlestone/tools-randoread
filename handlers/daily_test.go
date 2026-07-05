@@ -75,3 +75,30 @@ func TestHandleDailyMissingNoteReturnsError(t *testing.T) {
 		t.Fatalf("expected 502, got %d", rec.Code)
 	}
 }
+
+func TestHandleDailyImageURLIncludesAuthToken(t *testing.T) {
+	// Regression: <img> tags can't send the X-Auth-Token header, so the
+	// resolved asset URL must carry the token as a query param (which
+	// RequireToken accepts as a fallback) or every embedded image 401s.
+	downloader := &fakeDownloader{files: map[string][]byte{
+		"/DropsyncFiles/jw-mind/periodic/daily/2026-07-05-W27-Sun.md": []byte("![[photo.jpg]]"),
+	}}
+	now := time.Date(2026, 7, 5, 9, 0, 0, 0, time.UTC)
+
+	h := NewDailyHandler(downloader, "/DropsyncFiles/jw-mind", func() time.Time { return now })
+	h.AuthToken = "secret-token"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/daily", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		HTML string `json:"html"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(body.HTML, "token=secret-token") {
+		t.Fatalf("expected the image URL to include the auth token, got: %s", body.HTML)
+	}
+}
