@@ -10,9 +10,12 @@ GitHub-like dark theme.
   (`periodic/daily/YYYY-MM-DD-[W]WW-ddd.md`). Title shown is the bare
   filename.
 - **Rando ♻** — fetches a random note from anywhere in the vault, any time.
-  Title shown is the vault-relative path (e.g. `books / 2026 / main`).
+  Title shown is the vault-relative path (e.g. `books / 2026 / main`). The
+  full recursive vault listing this needs is slow (many paginated Dropbox
+  round trips), so it's cached in memory for 24h and shared with Clipped —
+  only the first click after a cold start or cache expiry pays that cost.
 - **Clipped ✂️** — fetches the most recently modified article from the
-  vault's `Clippings/` folder, any time.
+  vault's `Clippings/` folder, any time (shares Rando's listing cache).
 - **Email this note** (burger menu, ☰) — emails the currently displayed note
   as an HTML-embedded message to `jon@howapped.com` (configurable), images
   included.
