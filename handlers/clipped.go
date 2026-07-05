@@ -9,6 +9,10 @@ import (
 	"github.com/jonwhittlestone/tools-randoread/internal/note"
 )
 
+// dateClippedFormat matches Jon's requested heading format (interpreted as
+// hour:minute — "hh:ss" as literally written would omit minutes entirely).
+const dateClippedFormat = "2006-01-02 15:04"
+
 // ClippingsSubpath is where web clippings live within the vault — see the
 // vault's CLAUDE.md ("Clippings/ - Web clippings and saved articles").
 const ClippingsSubpath = "/Clippings"
@@ -41,7 +45,7 @@ func (h *ClippedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	candidates := candidateNotes(entries)
+	candidates := candidateNotes(entries, h.VaultRoot)
 	if len(candidates) == 0 {
 		writeJSONError(w, http.StatusBadGateway, "no clippings found")
 		return
@@ -61,6 +65,8 @@ func (h *ClippedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	html := markdown.Render(raw, assetImageResolver(h.VaultRoot, h.AuthToken))
+	heading := "<h3>Date Clipped: " + mostRecent.ModifiedAt.In(randoLocation).Format(dateClippedFormat) + "</h3>\n"
+	html = heading + html
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
