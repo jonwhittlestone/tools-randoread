@@ -9,13 +9,19 @@ GitHub-like dark theme.
 - **Daily 📅** — fetches today's daily note
   (`periodic/daily/YYYY-MM-DD-[W]WW-ddd.md`). Title shown is the bare
   filename.
-- **Rando ♻** — fetches a random note from anywhere in the vault, any time.
+- **Rando ♻** — fetches a random note from anywhere in the vault, clickable
+  any time. Picks one note per day and keeps serving that same note until
+  4pm Europe/London, when the next click picks a new one (persisted to
+  survive restarts). Excludes Dropbox "conflicted copy" duplicates,
+  Excalidraw drawings (`*.excalidraw.md`), and anything under `templates/`.
   Title shown is the vault-relative path (e.g. `books / 2026 / main`). The
   full recursive vault listing this needs is slow (many paginated Dropbox
   round trips), so it's cached in memory for 24h and shared with Clipped —
-  only the first click after a cold start or cache expiry pays that cost.
+  only the first pick after a cold start or cache expiry pays that cost.
 - **Clipped ✂️** — fetches the most recently modified article from the
-  vault's `Clippings/` folder, any time (shares Rando's listing cache).
+  vault's `Clippings/` folder, any time (shares Rando's listing cache and
+  file filters). Rendered with a "Date Clipped: yyyy-mm-dd hh:mm" heading
+  (Europe/London time) showing when it was last modified.
 - **Email this note** (burger menu, ☰) — emails the currently displayed note
   as an HTML-embedded message to `jon@howapped.com` (configurable), images
   included.
@@ -79,6 +85,7 @@ internal/dropbox/       — Dropbox HTTP API client (OAuth2+PKCE, download,
                           list_folder), no third-party SDK
 internal/markdown/      — goldmark-based renderer + Obsidian preprocessing
 internal/note/          — vault path/title formatting
+internal/state/         — Rando's "note of the day" pin (JSON file)
 internal/mail/          — SMTP sending
 static/                 — vanilla JS/CSS single-page app, no build step
 ```

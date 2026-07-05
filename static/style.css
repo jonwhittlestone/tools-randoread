@@ -170,6 +170,10 @@ a:hover {
 #note-content h5 { color: var(--h5); }
 #note-content h6 { color: var(--h6); }
 
+#note-content p {
+  line-height: 150%;
+}
+
 #note-content blockquote {
   border-left: 3px solid var(--blockquote);
   color: var(--blockquote);

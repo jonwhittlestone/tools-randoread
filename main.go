@@ -13,6 +13,7 @@ import (
 	"github.com/jonwhittlestone/tools-randoread/handlers"
 	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
 	"github.com/jonwhittlestone/tools-randoread/internal/mail"
+	"github.com/jonwhittlestone/tools-randoread/internal/state"
 )
 
 //go:embed static
@@ -91,7 +92,8 @@ func newMux(cfg Config) http.Handler {
 		go warmVaultListCache(vaultListCache, cfg.VaultRoot)
 	}
 
-	randoHandler := handlers.NewRandoHandler(dropboxClient, vaultListCache, cfg.VaultRoot, nil, nil)
+	randoPinStore := state.NewPinStore(filepath.Join(cfg.DataDir, "rando_pin.json"))
+	randoHandler := handlers.NewRandoHandler(dropboxClient, vaultListCache, cfg.VaultRoot, randoPinStore, nil, nil)
 	randoHandler.AuthToken = cfg.AuthToken
 	mux.Handle("GET /api/rando", randoHandler)
 

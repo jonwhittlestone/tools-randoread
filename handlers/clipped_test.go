@@ -55,6 +55,26 @@ func TestHandleClippedPicksMostRecent(t *testing.T) {
 	}
 }
 
+func TestHandleClippedIncludesDateClippedHeading(t *testing.T) {
+	modified := time.Date(2026, 1, 10, 14, 5, 0, 0, time.UTC) // GMT in January, so also 14:05 in London
+	entries := []dropbox.Entry{mdEntryModified("/DropsyncFiles/jw-mind/Clippings/a.md", modified)}
+	h, _ := newTestClippedHandler(t, entries, modified.Add(time.Hour))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/clipped", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		HTML string `json:"html"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+
+	want := "<h3>Date Clipped: " + modified.In(randoLocation).Format("2006-01-02 15:04") + "</h3>"
+	if !strings.Contains(body.HTML, want) {
+		t.Fatalf("expected heading %q, got: %s", want, body.HTML)
+	}
+}
+
 func TestHandleClippedOnlyListsClippingsFolder(t *testing.T) {
 	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
 	entries := []dropbox.Entry{mdEntryModified("/DropsyncFiles/jw-mind/Clippings/a.md", now)}
