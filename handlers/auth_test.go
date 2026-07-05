@@ -101,4 +101,28 @@ func TestRequireToken(t *testing.T) {
 			t.Fatalf("expected 200, got %d", rec.Code)
 		}
 	})
+
+	t.Run("query param token accepted as fallback", func(t *testing.T) {
+		// Browser-native navigations (OAuth redirects, <img> tags) can't set
+		// custom headers, so protected routes also accept ?token=.
+		req := httptest.NewRequest(http.MethodGet, "/api/asset?token=secret&path=/x.png", nil)
+		rec := httptest.NewRecorder()
+		protected.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rec.Code)
+		}
+	})
+
+	t.Run("dropbox oauth callback is public", func(t *testing.T) {
+		// Dropbox's redirect back to us carries no auth token; the PKCE
+		// state itself is what gates this endpoint.
+		req := httptest.NewRequest(http.MethodGet, "/api/dropbox/callback?code=abc", nil)
+		rec := httptest.NewRecorder()
+		protected.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rec.Code)
+		}
+	})
 }
