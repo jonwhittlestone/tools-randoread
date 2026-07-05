@@ -11,6 +11,7 @@ import (
 
 	"github.com/jonwhittlestone/tools-randoread/handlers"
 	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
+	"github.com/jonwhittlestone/tools-randoread/internal/mail"
 	"github.com/jonwhittlestone/tools-randoread/internal/state"
 )
 
@@ -36,6 +37,19 @@ type Config struct {
 	// VaultRoot is the Dropbox path (from the account root) to the Obsidian
 	// vault, e.g. "/DropsyncFiles/jw-mind".
 	VaultRoot string
+
+	// PublicBaseURL is randoread's externally visible URL, including the
+	// Traefik path prefix (e.g. "https://howapped.zapto.org/randoread/").
+	// Needed to build absolute asset URLs for email images, since an email
+	// client has no <base> tag or session to resolve relative ones against.
+	PublicBaseURL string
+
+	EmailFrom string
+	EmailTo   string
+	EmailUser string
+	EmailPass string
+	SMTPHost  string
+	SMTPPort  string
 }
 
 // newMux wires up all routes and wraps them in the token-auth middleware.
@@ -76,6 +90,13 @@ func newMux(cfg Config) http.Handler {
 	mux.Handle("GET /api/clipped", clippedHandler)
 	mux.HandleFunc("GET /api/clipped/status", clippedHandler.HandleStatus)
 
+	smtpConfig := mail.Config{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.EmailUser, Password: cfg.EmailPass}
+	sendFunc := func(subject, html string) error {
+		return mail.Send(smtpConfig, cfg.EmailFrom, cfg.EmailTo, subject, html)
+	}
+	emailHandler := handlers.NewEmailHandler(dropboxClient, cfg.VaultRoot, cfg.PublicBaseURL, cfg.AuthToken, sendFunc)
+	mux.Handle("POST /api/email", emailHandler)
+
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatal(err)
@@ -88,6 +109,13 @@ func newMux(cfg Config) http.Handler {
 // defaultVaultRoot matches tools-browsernotes' DEFAULT_VAULT_ROOT — both
 // services read the same Dropbox-synced Obsidian vault.
 const defaultVaultRoot = "/DropsyncFiles/jw-mind"
+
+const (
+	defaultPublicBaseURL = "https://howapped.zapto.org/randoread/"
+	defaultEmailTo       = "jon@howapped.com"
+	defaultSMTPHost      = "smtp.gmail.com"
+	defaultSMTPPort      = "587"
+)
 
 func mustEnv(key string) string {
 	v := os.Getenv(key)
@@ -116,6 +144,33 @@ func loadConfig() Config {
 		vaultRoot = defaultVaultRoot
 	}
 
+	publicBaseURL := os.Getenv("PUBLIC_BASE_URL")
+	if publicBaseURL == "" {
+		publicBaseURL = defaultPublicBaseURL
+	}
+
+	emailTo := os.Getenv("EMAIL_TO")
+	if emailTo == "" {
+		emailTo = defaultEmailTo
+	}
+
+	emailUser := os.Getenv("EMAIL_USER")
+
+	emailFrom := os.Getenv("EMAIL_FROM")
+	if emailFrom == "" {
+		emailFrom = emailUser
+	}
+
+	smtpHost := os.Getenv("SMTP_HOST")
+	if smtpHost == "" {
+		smtpHost = defaultSMTPHost
+	}
+
+	smtpPort := os.Getenv("SMTP_PORT")
+	if smtpPort == "" {
+		smtpPort = defaultSMTPPort
+	}
+
 	return Config{
 		AuthToken:          mustEnv("AUTH_TOKEN"),
 		AuthTokenIssuedAt:  issuedAt,
@@ -123,6 +178,13 @@ func loadConfig() Config {
 		DropboxAppKey:      os.Getenv("DROPBOX_APP_KEY"),
 		DropboxRedirectURI: os.Getenv("DROPBOX_REDIRECT_URI"),
 		VaultRoot:          vaultRoot,
+		PublicBaseURL:      publicBaseURL,
+		EmailFrom:          emailFrom,
+		EmailTo:            emailTo,
+		EmailUser:          emailUser,
+		EmailPass:          os.Getenv("EMAIL_PASS"),
+		SMTPHost:           smtpHost,
+		SMTPPort:           smtpPort,
 	}
 }
 

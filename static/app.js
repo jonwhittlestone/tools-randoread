@@ -16,6 +16,19 @@
   const dropboxStatus = document.getElementById("dropbox-status");
   const dropboxConnectBtn = document.getElementById("dropbox-connect-btn");
   const dropboxDisconnectBtn = document.getElementById("dropbox-disconnect-btn");
+  const emailButton = document.getElementById("email-button");
+  const emailStatus = document.getElementById("email-status");
+
+  // The currently displayed note — needed so "Email this note" can send
+  // exactly what's on screen without re-picking a new Rando/Clipped note
+  // (which would also burn its 24h cooldown).
+  let currentNote = null;
+
+  function renderNote(data) {
+    noteTitle.textContent = data.title;
+    noteContent.innerHTML = data.html;
+    currentNote = { path: data.path, title: data.title };
+  }
 
   function storedToken() {
     return localStorage.getItem(STORAGE_TOKEN_KEY);
@@ -60,6 +73,25 @@
     refreshDropboxStatus();
   });
 
+  emailButton.addEventListener("click", async () => {
+    if (!currentNote) {
+      emailStatus.textContent = "Load a note first.";
+      return;
+    }
+    emailStatus.textContent = "Sending…";
+    try {
+      const res = await authedFetch("api/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(currentNote),
+      });
+      const data = await res.json();
+      emailStatus.textContent = res.ok ? "Sent!" : data.error || "Failed to send.";
+    } catch (e) {
+      emailStatus.textContent = "Failed to send.";
+    }
+  });
+
   async function loadDaily() {
     noteTitle.textContent = "Loading…";
     noteContent.innerHTML = "";
@@ -71,8 +103,7 @@
         noteContent.textContent = data.error || "Failed to load today's daily note.";
         return;
       }
-      noteTitle.textContent = data.title;
-      noteContent.innerHTML = data.html;
+      renderNote(data);
     } catch (e) {
       noteTitle.textContent = "";
       noteContent.textContent = "Failed to load today's daily note.";
@@ -118,8 +149,7 @@
           noteContent.textContent = data.error || ("Failed to load " + label.toLowerCase() + ".");
           return;
         }
-        noteTitle.textContent = data.title;
-        noteContent.innerHTML = data.html;
+        renderNote(data);
         refreshStatus();
       } catch (e) {
         noteTitle.textContent = "";

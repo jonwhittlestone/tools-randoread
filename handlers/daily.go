@@ -61,5 +61,6 @@ func (h *DailyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
 		"title": filename,
 		"html":  html,
+		"path":  path,
 	})
 }
