@@ -105,6 +105,48 @@ func TestRenderTaskList(t *testing.T) {
 	}
 }
 
+func TestRenderStripsFrontmatterAndLinkifiesSource(t *testing.T) {
+	src := "---\n" +
+		`title: "How to ask for help"` + "\n" +
+		`source: "https://example.com/article?utm_source=x&utm_medium=y"` + "\n" +
+		"author:\n" +
+		"tags:\n" +
+		"  - \"clippings\"\n" +
+		"---\n" +
+		"Body content here."
+
+	html := Render([]byte(src), resolveNone)
+
+	if strings.Contains(html, "title:") || strings.Contains(html, "tags:") {
+		t.Fatalf("expected raw frontmatter fields to be stripped, got: %s", html)
+	}
+	if !strings.Contains(html, `<a href="https://example.com/article?utm_source=x&amp;utm_medium=y">`) {
+		t.Fatalf("expected the source URL to be a clickable link, got: %s", html)
+	}
+	if !strings.Contains(html, "Body content here.") {
+		t.Fatalf("expected the body to still render, got: %s", html)
+	}
+}
+
+func TestRenderFrontmatterWithoutSourceIsJustStripped(t *testing.T) {
+	src := "---\ntitle: \"No source here\"\n---\nBody content."
+	html := Render([]byte(src), resolveNone)
+
+	if strings.Contains(html, "title:") {
+		t.Fatalf("expected frontmatter to be stripped, got: %s", html)
+	}
+	if !strings.Contains(html, "Body content.") {
+		t.Fatalf("expected the body to still render, got: %s", html)
+	}
+}
+
+func TestRenderWithoutFrontmatterIsUnaffected(t *testing.T) {
+	html := Render([]byte("## Hello\n\nworld"), resolveNone)
+	if !strings.Contains(html, "<h2>Hello</h2>") {
+		t.Fatalf("expected normal rendering when there's no frontmatter, got: %s", html)
+	}
+}
+
 // TestRenderFixtureDoesNotPanic exercises everything above together against
 // a real trimmed note (see internal/markdown/testdata/ski-trip.md).
 func TestRenderFixtureDoesNotPanic(t *testing.T) {

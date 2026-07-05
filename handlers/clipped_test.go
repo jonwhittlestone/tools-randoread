@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
-	"github.com/jonwhittlestone/tools-randoread/internal/state"
 )
 
 func mdEntryModified(path string, modified time.Time) dropbox.Entry {
@@ -26,8 +24,7 @@ func newTestClippedHandler(t *testing.T, entries []dropbox.Entry, now time.Time)
 			downloader.files[e.Path] = []byte("## " + e.Name)
 		}
 	}
-	store := state.NewCooldownStore(filepath.Join(t.TempDir(), "clipped.json"))
-	h := NewClippedHandler(downloader, &fakeLister{entries: entries}, "/DropsyncFiles/jw-mind", store, func() time.Time { return now })
+	h := NewClippedHandler(downloader, &fakeLister{entries: entries}, "/DropsyncFiles/jw-mind", func() time.Time { return now })
 	return h, downloader
 }
 
@@ -76,24 +73,6 @@ func TestHandleClippedOnlyListsClippingsFolder(t *testing.T) {
 	}
 }
 
-func TestHandleClippedOnCooldownReturns429(t *testing.T) {
-	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
-	entries := []dropbox.Entry{mdEntryModified("/DropsyncFiles/jw-mind/Clippings/a.md", now)}
-	h, _ := newTestClippedHandler(t, entries, now)
-
-	if err := h.Store.Save(state.Cooldown{Path: entries[0].Path, LastFetchedAt: now.Add(-1 * time.Hour)}); err != nil {
-		t.Fatalf("seed cooldown: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/clipped", nil)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429, got %d", rec.Code)
-	}
-}
-
 func TestHandleClippedExcludesConflictedCopies(t *testing.T) {
 	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
 	entries := []dropbox.Entry{
@@ -112,5 +91,21 @@ func TestHandleClippedExcludesConflictedCopies(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
 	if body.Title != "Clippings / article" {
 		t.Errorf("expected the non-conflicted copy despite being older, got title %q", body.Title)
+	}
+}
+
+func TestHandleClippedHasNoCooldown(t *testing.T) {
+	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	entries := []dropbox.Entry{mdEntryModified("/DropsyncFiles/jw-mind/Clippings/a.md", now)}
+	h, _ := newTestClippedHandler(t, entries, now)
+
+	for i := range 3 {
+		req := httptest.NewRequest(http.MethodGet, "/api/clipped", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("attempt %d: expected 200, got %d: %s", i, rec.Code, rec.Body.String())
+		}
 	}
 }

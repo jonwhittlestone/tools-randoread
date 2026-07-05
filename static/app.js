@@ -20,8 +20,8 @@
   const emailStatus = document.getElementById("email-status");
 
   // The currently displayed note — needed so "Email this note" can send
-  // exactly what's on screen without re-picking a new Rando/Clipped note
-  // (which would also burn its 24h cooldown).
+  // exactly what's on screen without re-fetching (and possibly picking a
+  // different) Rando/Clipped note.
   let currentNote = null;
 
   function renderNote(data) {
@@ -112,45 +112,21 @@
 
   dailyButton.addEventListener("click", loadDaily);
 
-  function formatRetryAfter(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return "Available in " + hours + "h " + minutes + "m";
-  }
-
-  // Rando and Clipped share the same 24h-gated fetch/render/disable pattern,
-  // just against different endpoints and buttons.
-  function makeGatedFeature(button, apiPath, statusPath, label) {
-    async function refreshStatus() {
-      try {
-        const res = await authedFetch(statusPath);
-        const data = await res.json();
-        button.disabled = data.onCooldown;
-        button.title = data.onCooldown ? formatRetryAfter(data.retryAfterSeconds) : "";
-      } catch (e) {
-        // leave the button as-is; load() will surface any real error
-      }
-    }
-
+  // Rando and Clipped share the same fetch/render pattern, just against
+  // different endpoints and buttons. Clickable at any time — no cooldown.
+  function makeFeature(button, apiPath, label) {
     async function load() {
       noteTitle.textContent = "Loading…";
       noteContent.innerHTML = "";
       try {
         const res = await authedFetch(apiPath);
         const data = await res.json();
-        if (res.status === 429) {
-          noteTitle.textContent = "";
-          noteContent.textContent = label + " is on cooldown — " + formatRetryAfter(data.retryAfterSeconds).toLowerCase();
-          refreshStatus();
-          return;
-        }
         if (!res.ok) {
           noteTitle.textContent = "";
           noteContent.textContent = data.error || ("Failed to load " + label.toLowerCase() + ".");
           return;
         }
         renderNote(data);
-        refreshStatus();
       } catch (e) {
         noteTitle.textContent = "";
         noteContent.textContent = "Failed to load " + label.toLowerCase() + ".";
@@ -158,11 +134,10 @@
     }
 
     button.addEventListener("click", load);
-    return { refreshStatus };
   }
 
-  const rando = makeGatedFeature(randoButton, "api/rando", "api/rando/status", "Rando");
-  const clipped = makeGatedFeature(clippedButton, "api/clipped", "api/clipped/status", "Clipped");
+  makeFeature(randoButton, "api/rando", "Rando");
+  makeFeature(clippedButton, "api/clipped", "Clipped");
 
   function storedTokenIsValid() {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY);
@@ -208,8 +183,6 @@
     if (loggedInFromURL || storedTokenIsValid()) {
       showApp();
       loadDaily();
-      rando.refreshStatus();
-      clipped.refreshStatus();
     } else {
       showLogin();
     }

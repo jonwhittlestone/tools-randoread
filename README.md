@@ -9,20 +9,20 @@ GitHub-like dark theme.
 - **Daily 📅** — fetches today's daily note
   (`periodic/daily/YYYY-MM-DD-[W]WW-ddd.md`). Title shown is the bare
   filename.
-- **Rando ♻** — fetches a random note from anywhere in the vault. Limited to
-  once every 24 hours; the button disables itself with a countdown while on
-  cooldown. Title shown is the vault-relative path (e.g.
-  `books / 2026 / main`).
+- **Rando ♻** — fetches a random note from anywhere in the vault, any time.
+  Title shown is the vault-relative path (e.g. `books / 2026 / main`).
 - **Clipped ✂️** — fetches the most recently modified article from the
-  vault's `Clippings/` folder. Same 24h cooldown as Rando, tracked
-  independently.
+  vault's `Clippings/` folder, any time.
 - **Email this note** (burger menu, ☰) — emails the currently displayed note
   as an HTML-embedded message to `jon@howapped.com` (configurable), images
   included.
 - Obsidian-flavored markdown rendering: relative image embeds
   (`![[file.png]]`) resolve against the vault's `assets/` folder, standard
   markdown links/images render normally, bare URLs autolink, GFM
-  tables/tasklists supported.
+  tables/tasklists supported, and Obsidian Web Clipper frontmatter (`source:`
+  field) becomes a clickable "View original" link instead of raw YAML.
+- Sticky header (Daily/Rando/Clipped stay visible) with an independently
+  scrolling, darker-background reading area below it.
 
 ## Usage
 
@@ -76,7 +76,6 @@ internal/dropbox/       — Dropbox HTTP API client (OAuth2+PKCE, download,
                           list_folder), no third-party SDK
 internal/markdown/      — goldmark-based renderer + Obsidian preprocessing
 internal/note/          — vault path/title formatting
-internal/state/         — 24h-cooldown persistence (JSON file)
 internal/mail/          — SMTP sending
 static/                 — vanilla JS/CSS single-page app, no build step
 ```
@@ -107,5 +106,5 @@ See `.env.example`. Notable ones:
   absolute image URLs in emails.
 - `EMAIL_USER` / `EMAIL_PASS` / `SMTP_HOST` / `SMTP_PORT` / `EMAIL_TO` /
   `EMAIL_FROM` — outbound mail settings (Gmail app password by default).
-- `DATA_DIR` — where the Dropbox token file and cooldown state persist
-  (mounted volume in production).
+- `DATA_DIR` — where the Dropbox token file persists (mounted volume in
+  production).
