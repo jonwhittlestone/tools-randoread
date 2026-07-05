@@ -2,9 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>randoread</title>
+  <!-- Traefik strips the /randoread path prefix before proxying here, but the
+       browser's URL bar (and therefore relative-URL resolution) still has it.
+       <base> makes every relative link/fetch resolve under /randoread/
+       regardless of whether the visited URL had a trailing slash. -->
+  <base href="/randoread/" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <p>randoread</p>
+  <section id="login-screen" class="hidden">
+    <h1>randoread</h1>
+    <p>Use your login link to access randoread. Visit
+      <code>/randoread/?token=&lt;token&gt;</code> to log in — the token is
+      then remembered on this device for 90 days.</p>
+  </section>
+
+  <section id="app" class="hidden">
+    <div class="toolbar">
+      <button id="daily-button" class="pill-button" disabled title="Coming soon">Daily 📅</button>
+      <button id="rando-button" class="pill-button" disabled title="Coming soon">Rando ♻</button>
+      <div class="spacer"></div>
+      <button id="menu-button" class="icon-button" aria-label="Menu">☰</button>
+    </div>
+    <div id="note-title"></div>
+    <div id="note-content"></div>
+  </section>
+
+  <script src="app.js"></script>
 </body>
 </html>
