@@ -10,12 +10,7 @@ import (
 	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
 	"github.com/jonwhittlestone/tools-randoread/internal/markdown"
 	"github.com/jonwhittlestone/tools-randoread/internal/note"
-	"github.com/jonwhittlestone/tools-randoread/internal/state"
 )
-
-// Cooldown is how long a gated feature (Rando, Clipped) must wait between
-// fetches.
-const Cooldown = 24 * time.Hour
 
 // NoteLister is the subset of *dropbox.Client that Rando/Clipped need to
 // enumerate vault notes.
@@ -23,19 +18,19 @@ type NoteLister interface {
 	ListFolder(path string, recursive bool) ([]dropbox.Entry, error)
 }
 
-// RandoHandler serves a random note from the vault, gated to once every 24h.
+// RandoHandler serves a random note from the vault. Clickable at any time —
+// no cooldown (removed per Jon: "I shouldn't have specified 'Disabled'").
 type RandoHandler struct {
 	Downloader NoteDownloader
 	Lister     NoteLister
 	VaultRoot  string
-	Store      *state.CooldownStore
 	Now        func() time.Time
 	PickIndex  func(n int) int // returns an index in [0,n) — math/rand.Intn in production
 }
 
 // NewRandoHandler builds a RandoHandler. now defaults to time.Now and
 // pickIndex to math/rand.Intn if nil.
-func NewRandoHandler(downloader NoteDownloader, lister NoteLister, vaultRoot string, store *state.CooldownStore, now func() time.Time, pickIndex func(int) int) *RandoHandler {
+func NewRandoHandler(downloader NoteDownloader, lister NoteLister, vaultRoot string, now func() time.Time, pickIndex func(int) int) *RandoHandler {
 	if now == nil {
 		now = time.Now
 	}
@@ -46,7 +41,6 @@ func NewRandoHandler(downloader NoteDownloader, lister NoteLister, vaultRoot str
 		Downloader: downloader,
 		Lister:     lister,
 		VaultRoot:  vaultRoot,
-		Store:      store,
 		Now:        now,
 		PickIndex:  pickIndex,
 	}
@@ -70,35 +64,7 @@ func candidateNotes(entries []dropbox.Entry) []dropbox.Entry {
 	return out
 }
 
-func (h *RandoHandler) remainingCooldown(c state.Cooldown) time.Duration {
-	if c.LastFetchedAt.IsZero() {
-		return 0
-	}
-	elapsed := h.Now().Sub(c.LastFetchedAt)
-	remaining := Cooldown - elapsed
-	if remaining < 0 {
-		return 0
-	}
-	return remaining
-}
-
 func (h *RandoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	cooldown, err := h.Store.Load()
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to read cooldown state")
-		return
-	}
-
-	if remaining := h.remainingCooldown(cooldown); remaining > 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusTooManyRequests)
-		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
-			"error":             "rando is on cooldown",
-			"retryAfterSeconds": int(remaining.Seconds()),
-		})
-		return
-	}
-
 	entries, err := h.Lister.ListFolder(h.VaultRoot, true)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "failed to list vault notes")
@@ -119,11 +85,6 @@ func (h *RandoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Store.Save(state.Cooldown{Path: chosen.Path, LastFetchedAt: h.Now()}); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to persist cooldown state")
-		return
-	}
-
 	html := markdown.Render(raw, assetImageResolver(h.VaultRoot))
 
 	w.Header().Set("Content-Type", "application/json")
@@ -131,24 +92,6 @@ func (h *RandoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"title": note.FormatVaultTitle(chosen.Path, h.VaultRoot),
 		"html":  html,
 		"path":  chosen.Path,
-	})
-}
-
-// HandleStatus serves GET /api/rando/status — lets the frontend show a
-// disabled button with a countdown without consuming a fetch attempt.
-func (h *RandoHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
-	cooldown, err := h.Store.Load()
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to read cooldown state")
-		return
-	}
-
-	remaining := h.remainingCooldown(cooldown)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
-		"onCooldown":        remaining > 0,
-		"retryAfterSeconds": int(remaining.Seconds()),
 	})
 }
 

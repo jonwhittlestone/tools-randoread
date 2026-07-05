@@ -12,7 +12,6 @@ import (
 	"github.com/jonwhittlestone/tools-randoread/handlers"
 	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
 	"github.com/jonwhittlestone/tools-randoread/internal/mail"
-	"github.com/jonwhittlestone/tools-randoread/internal/state"
 )
 
 //go:embed static
@@ -80,15 +79,11 @@ func newMux(cfg Config) http.Handler {
 	assetHandler := handlers.NewAssetHandler(dropboxClient, cfg.VaultRoot)
 	mux.Handle("GET /api/asset", assetHandler)
 
-	randoStore := state.NewCooldownStore(filepath.Join(cfg.DataDir, "rando_cooldown.json"))
-	randoHandler := handlers.NewRandoHandler(dropboxClient, dropboxClient, cfg.VaultRoot, randoStore, nil, nil)
+	randoHandler := handlers.NewRandoHandler(dropboxClient, dropboxClient, cfg.VaultRoot, nil, nil)
 	mux.Handle("GET /api/rando", randoHandler)
-	mux.HandleFunc("GET /api/rando/status", randoHandler.HandleStatus)
 
-	clippedStore := state.NewCooldownStore(filepath.Join(cfg.DataDir, "clipped_cooldown.json"))
-	clippedHandler := handlers.NewClippedHandler(dropboxClient, dropboxClient, cfg.VaultRoot, clippedStore, nil)
+	clippedHandler := handlers.NewClippedHandler(dropboxClient, dropboxClient, cfg.VaultRoot, nil)
 	mux.Handle("GET /api/clipped", clippedHandler)
-	mux.HandleFunc("GET /api/clipped/status", clippedHandler.HandleStatus)
 
 	smtpConfig := mail.Config{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.EmailUser, Password: cfg.EmailPass}
 	sendFunc := func(subject, html string) error {

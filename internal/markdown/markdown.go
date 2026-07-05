@@ -38,7 +38,8 @@ var renderer = goldmark.New(
 // Both are skipped inside fenced code blocks so example markdown in a note
 // doesn't get rewritten.
 func Render(source []byte, resolveImage ImageResolver) string {
-	preprocessed := preprocess(string(source), resolveImage)
+	body := stripFrontmatter(string(source))
+	preprocessed := preprocess(body, resolveImage)
 
 	var buf bytes.Buffer
 	if err := renderer.Convert([]byte(preprocessed), &buf); err != nil {
