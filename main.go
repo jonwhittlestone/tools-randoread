@@ -31,6 +31,10 @@ type Config struct {
 	// registration since both read the same vault.
 	DropboxAppKey      string
 	DropboxRedirectURI string
+
+	// VaultRoot is the Dropbox path (from the account root) to the Obsidian
+	// vault, e.g. "/DropsyncFiles/jw-mind".
+	VaultRoot string
 }
 
 // newMux wires up all routes and wraps them in the token-auth middleware.
@@ -55,6 +59,12 @@ func newMux(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/dropbox/status", dropboxConnect.HandleStatus)
 	mux.HandleFunc("POST /api/dropbox/disconnect", dropboxConnect.HandleDisconnect)
 
+	dailyHandler := handlers.NewDailyHandler(dropboxClient, cfg.VaultRoot, nil)
+	mux.Handle("GET /api/daily", dailyHandler)
+
+	assetHandler := handlers.NewAssetHandler(dropboxClient, cfg.VaultRoot)
+	mux.Handle("GET /api/asset", assetHandler)
+
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatal(err)
@@ -63,6 +73,10 @@ func newMux(cfg Config) http.Handler {
 
 	return auth.RequireToken(mux)
 }
+
+// defaultVaultRoot matches tools-browsernotes' DEFAULT_VAULT_ROOT — both
+// services read the same Dropbox-synced Obsidian vault.
+const defaultVaultRoot = "/DropsyncFiles/jw-mind"
 
 func mustEnv(key string) string {
 	v := os.Getenv(key)
@@ -86,12 +100,18 @@ func loadConfig() Config {
 		log.Fatalf("failed to create DATA_DIR %q: %v", dataDir, err)
 	}
 
+	vaultRoot := os.Getenv("VAULT_ROOT")
+	if vaultRoot == "" {
+		vaultRoot = defaultVaultRoot
+	}
+
 	return Config{
 		AuthToken:          mustEnv("AUTH_TOKEN"),
 		AuthTokenIssuedAt:  issuedAt,
 		DataDir:            dataDir,
 		DropboxAppKey:      os.Getenv("DROPBOX_APP_KEY"),
 		DropboxRedirectURI: os.Getenv("DROPBOX_REDIRECT_URI"),
+		VaultRoot:          vaultRoot,
 	}
 }
 

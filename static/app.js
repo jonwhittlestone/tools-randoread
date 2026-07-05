@@ -6,6 +6,9 @@
 
   const loginScreen = document.getElementById("login-screen");
   const app = document.getElementById("app");
+  const dailyButton = document.getElementById("daily-button");
+  const noteTitle = document.getElementById("note-title");
+  const noteContent = document.getElementById("note-content");
   const menuButton = document.getElementById("menu-button");
   const menuPanel = document.getElementById("menu-panel");
   const dropboxStatus = document.getElementById("dropbox-status");
@@ -55,6 +58,27 @@
     refreshDropboxStatus();
   });
 
+  async function loadDaily() {
+    noteTitle.textContent = "Loading…";
+    noteContent.innerHTML = "";
+    try {
+      const res = await authedFetch("api/daily");
+      const data = await res.json();
+      if (!res.ok) {
+        noteTitle.textContent = "";
+        noteContent.textContent = data.error || "Failed to load today's daily note.";
+        return;
+      }
+      noteTitle.textContent = data.title;
+      noteContent.innerHTML = data.html;
+    } catch (e) {
+      noteTitle.textContent = "";
+      noteContent.textContent = "Failed to load today's daily note.";
+    }
+  }
+
+  dailyButton.addEventListener("click", loadDaily);
+
   function storedTokenIsValid() {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY);
     const expiresAt = localStorage.getItem(STORAGE_EXPIRES_KEY);
@@ -98,6 +122,7 @@
     const loggedInFromURL = await tryLoginFromURL();
     if (loggedInFromURL || storedTokenIsValid()) {
       showApp();
+      loadDaily();
     } else {
       showLogin();
     }

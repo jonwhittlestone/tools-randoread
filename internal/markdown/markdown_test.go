@@ -1,0 +1,127 @@
+package markdown
+
+import (
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func resolveNone(string) (string, bool) { return "", false }
+
+func TestRenderBasicHeadingAndParagraph(t *testing.T) {
+	html := Render([]byte("## Hello\n\nworld"), resolveNone)
+	if !strings.Contains(html, "<h2>Hello</h2>") {
+		t.Fatalf("expected an <h2>, got: %s", html)
+	}
+	if !strings.Contains(html, "<p>world</p>") {
+		t.Fatalf("expected a <p>, got: %s", html)
+	}
+}
+
+func TestRenderStandardMarkdownLinkIsClickable(t *testing.T) {
+	html := Render([]byte("[Sunweb](https://www.sunweb.co.uk/ski)"), resolveNone)
+	if !strings.Contains(html, `<a href="https://www.sunweb.co.uk/ski">Sunweb</a>`) {
+		t.Fatalf("expected a rendered anchor, got: %s", html)
+	}
+}
+
+func TestRenderLinkifiesBareURL(t *testing.T) {
+	html := Render([]byte("https://www.sunweb.co.uk/ski/france"), resolveNone)
+	if !strings.Contains(html, `<a href="https://www.sunweb.co.uk/ski/france">`) {
+		t.Fatalf("expected the bare URL to be autolinked, got: %s", html)
+	}
+}
+
+func TestRenderStandardMarkdownImageIsAbsolute(t *testing.T) {
+	html := Render([]byte("![a cat](https://example.com/cat.png)"), resolveNone)
+	if !strings.Contains(html, `<img src="https://example.com/cat.png" alt="a cat">`) {
+		t.Fatalf("expected the absolute image to render as-is, got: %s", html)
+	}
+}
+
+func TestRenderResolvesRelativeObsidianImageEmbed(t *testing.T) {
+	resolve := func(filename string) (string, bool) {
+		if filename == "Pasted image 20260122173316.png" {
+			return "api/asset?path=/assets/Pasted%20image%2020260122173316.png", true
+		}
+		return "", false
+	}
+
+	html := Render([]byte("![[Pasted image 20260122173316.png]]"), resolve)
+	if !strings.Contains(html, `<img src="api/asset?path=/assets/Pasted%20image%2020260122173316.png"`) {
+		t.Fatalf("expected the wikilink embed to resolve to an <img>, got: %s", html)
+	}
+}
+
+func TestRenderShowsPlaceholderForUnresolvedImageEmbed(t *testing.T) {
+	html := Render([]byte("![[missing.png]]"), resolveNone)
+	if strings.Contains(html, "<img") {
+		t.Fatalf("expected no <img> for an unresolved embed, got: %s", html)
+	}
+	if !strings.Contains(html, "missing.png") {
+		t.Fatalf("expected the filename to still be visible as a placeholder, got: %s", html)
+	}
+}
+
+func TestRenderWikilinkIsPlainTextNotNavigable(t *testing.T) {
+	html := Render([]byte("[[Some Note]] and [[Some Note|an alias]]"), resolveNone)
+	if strings.Contains(html, "<a ") {
+		t.Fatalf("expected wikilinks to not become anchors, got: %s", html)
+	}
+	if !strings.Contains(html, "Some Note") || !strings.Contains(html, "an alias") {
+		t.Fatalf("expected wikilink text to still be visible, got: %s", html)
+	}
+}
+
+func TestRenderLeavesFencedCodeBlockLiteral(t *testing.T) {
+	src := "```\n### not a real heading\n**not real bold**\n```"
+	html := Render([]byte(src), resolveNone)
+	if strings.Contains(html, "<h3>") || strings.Contains(html, "<strong>") {
+		t.Fatalf("expected code fence contents to stay literal, got: %s", html)
+	}
+	if !strings.Contains(html, "<pre><code>") {
+		t.Fatalf("expected a <pre><code> block, got: %s", html)
+	}
+}
+
+func TestRenderTable(t *testing.T) {
+	src := "| A | B |\n| - | - |\n| 1 | 2 |"
+	html := Render([]byte(src), resolveNone)
+	if !strings.Contains(html, "<table>") || !strings.Contains(html, "<td>1</td>") {
+		t.Fatalf("expected a rendered table, got: %s", html)
+	}
+}
+
+func TestRenderTaskList(t *testing.T) {
+	src := "- [ ] todo\n- [x] done"
+	html := Render([]byte(src), resolveNone)
+	if !strings.Contains(html, `type="checkbox"`) {
+		t.Fatalf("expected checkboxes for task list items, got: %s", html)
+	}
+	if !strings.Contains(html, "checked") {
+		t.Fatalf("expected the completed item to be marked checked, got: %s", html)
+	}
+}
+
+// TestRenderFixtureDoesNotPanic exercises everything above together against
+// a real trimmed note (see internal/markdown/testdata/ski-trip.md).
+func TestRenderFixtureDoesNotPanic(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("testdata", "ski-trip.md"))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+
+	resolve := func(filename string) (string, bool) {
+		return "api/asset?path=/assets/" + url.QueryEscape(filename), true
+	}
+
+	html := Render(src, resolve)
+
+	for _, want := range []string{"<img", "<table>", `type="checkbox"`, "<pre><code>", "sunweb.co.uk"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("expected fixture render to contain %q, got: %s", want, html)
+		}
+	}
+}

@@ -15,6 +15,7 @@ func testConfig(t *testing.T) Config {
 		DataDir:            t.TempDir(),
 		DropboxAppKey:      "app-key",
 		DropboxRedirectURI: "https://example.com/api/dropbox/callback",
+		VaultRoot:          "/DropsyncFiles/jw-mind",
 	}
 }
 
