@@ -104,6 +104,27 @@ a:hover {
   flex: 1;
 }
 
+.menu-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.menu-panel button {
+  background: var(--bg-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
 .icon-button {
   background: none;
   border: none;

@@ -6,6 +6,54 @@
 
   const loginScreen = document.getElementById("login-screen");
   const app = document.getElementById("app");
+  const menuButton = document.getElementById("menu-button");
+  const menuPanel = document.getElementById("menu-panel");
+  const dropboxStatus = document.getElementById("dropbox-status");
+  const dropboxConnectBtn = document.getElementById("dropbox-connect-btn");
+  const dropboxDisconnectBtn = document.getElementById("dropbox-disconnect-btn");
+
+  function storedToken() {
+    return localStorage.getItem(STORAGE_TOKEN_KEY);
+  }
+
+  function authedFetch(path, options) {
+    options = options || {};
+    options.headers = Object.assign({}, options.headers, {
+      "X-Auth-Token": storedToken(),
+    });
+    return fetch(path, options);
+  }
+
+  async function refreshDropboxStatus() {
+    try {
+      const res = await authedFetch("api/dropbox/status");
+      const data = await res.json();
+      dropboxStatus.textContent = "Dropbox: " + (data.connected ? "connected" : "not connected");
+      dropboxConnectBtn.classList.toggle("hidden", data.connected);
+      dropboxDisconnectBtn.classList.toggle("hidden", !data.connected);
+    } catch (e) {
+      dropboxStatus.textContent = "Dropbox: status unavailable";
+    }
+  }
+
+  menuButton.addEventListener("click", () => {
+    menuPanel.classList.toggle("hidden");
+    if (!menuPanel.classList.contains("hidden")) {
+      refreshDropboxStatus();
+    }
+  });
+
+  dropboxConnectBtn.addEventListener("click", () => {
+    // Full-page navigation (OAuth redirect flow) — can't set a custom
+    // header, so the token travels as a query param here (RequireToken
+    // accepts either). See handlers/auth.go for the server-side fallback.
+    window.location.href = "api/dropbox/auth?token=" + encodeURIComponent(storedToken());
+  });
+
+  dropboxDisconnectBtn.addEventListener("click", async () => {
+    await authedFetch("api/dropbox/disconnect", { method: "POST" });
+    refreshDropboxStatus();
+  });
 
   function storedTokenIsValid() {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY);

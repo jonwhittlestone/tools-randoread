@@ -61,17 +61,22 @@ func (a *Auth) HandleValidate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// publicPaths bypass token auth entirely: static assets and the auth check
-// endpoint itself (which performs its own validation).
+// publicPaths bypass token auth entirely: static assets, the auth check
+// endpoint itself (which performs its own validation), and the Dropbox OAuth
+// callback (Dropbox's redirect back to us carries no auth token — the
+// one-time PKCE state is what gates that endpoint instead).
 func isPublicPath(path string) bool {
-	if path == "/health" || path == "/api/auth" {
+	if path == "/health" || path == "/api/auth" || path == "/api/dropbox/callback" {
 		return true
 	}
 	return !strings.HasPrefix(path, "/api/")
 }
 
-// RequireToken is middleware that enforces AuthTokenHeader on every /api/
-// route except the public ones above.
+// RequireToken is middleware that enforces the auth token on every /api/
+// route except the public ones above. The token is normally sent via
+// AuthTokenHeader (fetch calls after login), but a "token" query parameter
+// is also accepted — browser-native navigations like an OAuth redirect or an
+// <img> tag can't attach custom headers.
 func (a *Auth) RequireToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isPublicPath(r.URL.Path) {
@@ -80,6 +85,9 @@ func (a *Auth) RequireToken(next http.Handler) http.Handler {
 		}
 
 		token := r.Header.Get(AuthTokenHeader)
+		if token == "" {
+			token = r.URL.Query().Get("token")
+		}
 		if !a.Valid(token) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
