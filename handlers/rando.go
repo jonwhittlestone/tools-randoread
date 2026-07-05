@@ -26,6 +26,9 @@ type RandoHandler struct {
 	VaultRoot  string
 	Now        func() time.Time
 	PickIndex  func(n int) int // returns an index in [0,n) — math/rand.Intn in production
+
+	// AuthToken is embedded in resolved image URLs — see assetImageResolver.
+	AuthToken string
 }
 
 // NewRandoHandler builds a RandoHandler. now defaults to time.Now and
@@ -85,7 +88,7 @@ func (h *RandoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html := markdown.Render(raw, assetImageResolver(h.VaultRoot))
+	html := markdown.Render(raw, assetImageResolver(h.VaultRoot, h.AuthToken))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +92,29 @@ func TestHandleClippedExcludesConflictedCopies(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
 	if body.Title != "Clippings / article" {
 		t.Errorf("expected the non-conflicted copy despite being older, got title %q", body.Title)
+	}
+}
+
+func TestHandleClippedImageURLIncludesAuthToken(t *testing.T) {
+	downloader := &fakeDownloader{files: map[string][]byte{
+		"/DropsyncFiles/jw-mind/Clippings/a.md": []byte("![[photo.jpg]]"),
+	}}
+	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	entries := []dropbox.Entry{mdEntryModified("/DropsyncFiles/jw-mind/Clippings/a.md", now)}
+
+	h := NewClippedHandler(downloader, &fakeLister{entries: entries}, "/DropsyncFiles/jw-mind", func() time.Time { return now })
+	h.AuthToken = "secret-token"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/clipped", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		HTML string `json:"html"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body.HTML, "token=secret-token") {
+		t.Fatalf("expected the image URL to include the auth token, got: %s", body.HTML)
 	}
 }
 
