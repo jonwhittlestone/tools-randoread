@@ -4,6 +4,8 @@ package markdown
 
 import (
 	"bytes"
+	"fmt"
+	stdhtml "html"
 	"regexp"
 	"strings"
 
@@ -13,8 +15,9 @@ import (
 )
 
 // ImageResolver maps a bare filename from an Obsidian embed (e.g.
-// "![[photo.png]]") to a servable URL. It returns ok=false if the file can't
-// be located, in which case a text placeholder is rendered instead.
+// "![[photo.png]]" or "![[note.pdf]]") to a servable URL. It returns
+// ok=false if the file can't be located, in which case a text placeholder
+// is rendered instead.
 type ImageResolver func(filename string) (url string, ok bool)
 
 var (
@@ -71,7 +74,11 @@ func preprocess(source string, resolveImage ImageResolver) string {
 
 			url, ok := resolveImage(filename)
 			if !ok {
-				return "*[missing image: " + filename + "]*"
+				return "*[missing embed: " + filename + "]*"
+			}
+
+			if isPDF(filename) {
+				return renderPDFEmbed(url, display)
 			}
 			return "![" + display + "](" + url + ")"
 		})
@@ -89,4 +96,19 @@ func preprocess(source string, resolveImage ImageResolver) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func isPDF(filename string) bool {
+	return strings.HasSuffix(strings.ToLower(filename), ".pdf")
+}
+
+// renderPDFEmbed renders a PDF as an inline <object> (most desktop and
+// mobile browsers show their native PDF viewer for this), with a plain link
+// as fallback content for the rare viewer that renders neither — e.g. a
+// handwritten note synced in from tools-browsernotes' reMarkable pipeline.
+func renderPDFEmbed(url, display string) string {
+	return fmt.Sprintf(
+		`<object data="%s" type="application/pdf" width="100%%" height="600"><p>📄 <a href="%s">%s</a></p></object>`,
+		url, url, stdhtml.EscapeString(display),
+	)
 }

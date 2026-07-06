@@ -55,6 +55,36 @@ func TestRenderResolvesRelativeObsidianImageEmbed(t *testing.T) {
 	}
 }
 
+func TestRenderResolvesRelativePDFEmbedAsObjectTag(t *testing.T) {
+	resolve := func(filename string) (string, bool) {
+		if filename == "handwritten-note.pdf" {
+			return "api/asset?path=/assets/handwritten-note.pdf", true
+		}
+		return "", false
+	}
+
+	html := Render([]byte("![[handwritten-note.pdf]]"), resolve)
+	if !strings.Contains(html, `<object data="api/asset?path=/assets/handwritten-note.pdf" type="application/pdf"`) {
+		t.Fatalf("expected the PDF embed to resolve to an <object> tag, got: %s", html)
+	}
+	if !strings.Contains(html, `<a href="api/asset?path=/assets/handwritten-note.pdf">`) {
+		t.Fatalf("expected a fallback link for viewers that can't render the <object>, got: %s", html)
+	}
+	if strings.Contains(html, "<img") {
+		t.Fatalf("a PDF embed should never render as <img>, got: %s", html)
+	}
+}
+
+func TestRenderShowsPlaceholderForUnresolvedPDFEmbed(t *testing.T) {
+	html := Render([]byte("![[missing.pdf]]"), resolveNone)
+	if strings.Contains(html, "<object") {
+		t.Fatalf("expected no <object> for an unresolved embed, got: %s", html)
+	}
+	if !strings.Contains(html, "missing.pdf") {
+		t.Fatalf("expected the filename to still be visible as a placeholder, got: %s", html)
+	}
+}
+
 func TestRenderShowsPlaceholderForUnresolvedImageEmbed(t *testing.T) {
 	html := Render([]byte("![[missing.png]]"), resolveNone)
 	if strings.Contains(html, "<img") {

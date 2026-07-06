@@ -130,7 +130,7 @@ func (h *RandoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RandoHandler) respond(w http.ResponseWriter, path string, raw []byte) {
-	html := markdown.Render(raw, assetImageResolver(h.VaultRoot, h.AuthToken))
+	html := markdown.Render(raw, vaultFileResolver(h.Lister, h.VaultRoot, h.AuthToken))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck

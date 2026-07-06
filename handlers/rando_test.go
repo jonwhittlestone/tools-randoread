@@ -147,7 +147,10 @@ func TestHandleRandoImageURLIncludesAuthToken(t *testing.T) {
 	downloader := &fakeDownloader{files: map[string][]byte{
 		"/DropsyncFiles/jw-mind/a.md": []byte("![[photo.jpg]]"),
 	}}
-	entries := []dropbox.Entry{mdEntry("/DropsyncFiles/jw-mind/a.md")}
+	entries := []dropbox.Entry{
+		mdEntry("/DropsyncFiles/jw-mind/a.md"),
+		{Path: "/DropsyncFiles/jw-mind/assets/photo.jpg", Name: "photo.jpg"},
+	}
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	pinStore := state.NewPinStore(filepath.Join(t.TempDir(), "pin.json"))
