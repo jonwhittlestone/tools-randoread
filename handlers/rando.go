@@ -25,13 +25,26 @@ type NoteLister interface {
 type RandoHandler struct {
 	Downloader NoteDownloader
 	Lister     NoteLister
-	VaultRoot  string
+	VaultRoot  string // true vault root — used for titles and embed resolution
 	PinStore   *state.PinStore
 	Now        func() time.Time
 	PickIndex  func(n int) int // returns an index in [0,n) — math/rand.Intn in production
 
-	// AuthToken is embedded in resolved image URLs — see assetImageResolver.
+	// ListPath scopes candidate selection to a subfolder (e.g. Clippings/,
+	// for "Rando Clipped") without affecting titles or embed resolution,
+	// which always stay relative to the true VaultRoot. Defaults to
+	// VaultRoot when empty.
+	ListPath string
+
+	// AuthToken is embedded in resolved image URLs — see vaultFileResolver.
 	AuthToken string
+}
+
+func (h *RandoHandler) listPath() string {
+	if h.ListPath != "" {
+		return h.ListPath
+	}
+	return h.VaultRoot
 }
 
 // NewRandoHandler builds a RandoHandler. now defaults to time.Now and
@@ -101,7 +114,7 @@ func (h *RandoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// fresh one instead of getting stuck erroring for the rest of the day.
 	}
 
-	entries, err := h.Lister.ListFolder(h.VaultRoot, true)
+	entries, err := h.Lister.ListFolder(h.listPath(), true)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "failed to list vault notes")
 		return
