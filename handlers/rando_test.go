@@ -143,6 +143,33 @@ func TestHandleRandoExcludesTemplatesDirectory(t *testing.T) {
 	}
 }
 
+func TestHandleRandoListPathScopesCandidatesButVaultRootTitles(t *testing.T) {
+	// Powers "Rando Clipped": picks candidates from a subfolder (ListPath)
+	// while still formatting the title relative to the true vault root, so
+	// it reads "Clippings / name" like the plain Clipped feature does.
+	entries := []dropbox.Entry{mdEntry("/DropsyncFiles/jw-mind/Clippings/article.md")}
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	h, _ := newTestRandoHandler(t, entries, now, 0)
+	lister := h.Lister.(*fakeLister)
+	h.ListPath = "/DropsyncFiles/jw-mind/Clippings"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/rando-clipped", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if lister.calledPath != "/DropsyncFiles/jw-mind/Clippings" {
+		t.Errorf("expected candidates to be listed from ListPath, got %q", lister.calledPath)
+	}
+
+	var body struct {
+		Title string `json:"title"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if body.Title != "Clippings / article" {
+		t.Errorf("expected the title relative to the true vault root, got %q", body.Title)
+	}
+}
+
 func TestHandleRandoImageURLIncludesAuthToken(t *testing.T) {
 	downloader := &fakeDownloader{files: map[string][]byte{
 		"/DropsyncFiles/jw-mind/a.md": []byte("![[photo.jpg]]"),

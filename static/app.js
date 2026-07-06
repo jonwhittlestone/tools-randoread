@@ -8,6 +8,7 @@
   const app = document.getElementById("app");
   const dailyButton = document.getElementById("daily-button");
   const randoButton = document.getElementById("rando-button");
+  const randoClippedButton = document.getElementById("rando-clipped-button");
   const clippedButton = document.getElementById("clipped-button");
   const noteTitle = document.getElementById("note-title");
   const noteContent = document.getElementById("note-content");
@@ -24,7 +25,12 @@
   // different) Rando/Clipped note.
   let currentNote = null;
 
-  const modeButtons = { daily: dailyButton, rando: randoButton, clipped: clippedButton };
+  const modeButtons = {
+    daily: dailyButton,
+    rando: randoButton,
+    "rando-clipped": randoClippedButton,
+    clipped: clippedButton,
+  };
 
   // Marks which section is active (border highlight) and reflects it in the
   // URL hash so the current view is deep-linkable/bookmarkable/shareable.
@@ -153,7 +159,8 @@
   }
 
   const rando = makeFeature(randoButton, "api/rando", "Rando", "rando");
-  const clipped = makeFeature(clippedButton, "api/clipped", "Clipped", "clipped");
+  const randoClipped = makeFeature(randoClippedButton, "api/rando-clipped", "Rando Clipped", "rando-clipped");
+  const clipped = makeFeature(clippedButton, "api/clipped", "Most Recently Clipped", "clipped");
 
   function storedTokenIsValid() {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY);
@@ -198,6 +205,8 @@
     const hash = window.location.hash.replace("#", "");
     if (hash === "rando") {
       rando.load();
+    } else if (hash === "rando-clipped") {
+      randoClipped.load();
     } else if (hash === "clipped") {
       clipped.load();
     } else {

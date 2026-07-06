@@ -98,6 +98,14 @@ func newMux(cfg Config) http.Handler {
 	randoHandler.AuthToken = cfg.AuthToken
 	mux.Handle("GET /api/rando", randoHandler)
 
+	// "Rando Clipped" — same random-pick-once-a-day behavior as Rando, but
+	// scoped to Clippings/. Its own pin file so the two gate independently.
+	randoClippedPinStore := state.NewPinStore(filepath.Join(cfg.DataDir, "rando_clipped_pin.json"))
+	randoClippedHandler := handlers.NewRandoHandler(dropboxClient, vaultListCache, cfg.VaultRoot, randoClippedPinStore, nil, nil)
+	randoClippedHandler.ListPath = cfg.VaultRoot + handlers.ClippingsSubpath
+	randoClippedHandler.AuthToken = cfg.AuthToken
+	mux.Handle("GET /api/rando-clipped", randoClippedHandler)
+
 	clippedHandler := handlers.NewClippedHandler(dropboxClient, vaultListCache, cfg.VaultRoot, nil)
 	clippedHandler.AuthToken = cfg.AuthToken
 	mux.Handle("GET /api/clipped", clippedHandler)

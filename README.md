@@ -18,10 +18,14 @@ GitHub-like dark theme.
   full recursive vault listing this needs is slow (many paginated Dropbox
   round trips), so it's cached in memory for 24h and shared with Clipped —
   only the first pick after a cold start or cache expiry pays that cost.
-- **Clipped ✂️** — fetches the most recently modified article from the
-  vault's `Clippings/` folder, any time (shares Rando's listing cache and
-  file filters). Rendered with a "Date Clipped: yyyy-mm-dd hh:mm" heading
-  (Europe/London time) showing when it was last modified.
+- **Rando Clipped 🎠** — same one-per-day/4pm-reset behavior as Rando, but
+  candidates come from `Clippings/` only. Gates independently of Rando (its
+  own persisted pick). Title still reads `Clippings / name` since it's
+  formatted relative to the true vault root, not the Clippings subfolder.
+- **Most Recently Clipped ✂️** — fetches the most recently modified article
+  from the vault's `Clippings/` folder, any time (shares Rando's listing
+  cache and file filters). Rendered with a "Date Clipped: yyyy-mm-dd hh:mm"
+  heading (Europe/London time) showing when it was last modified.
 - **Email this note** (burger menu, ☰) — emails the currently displayed note
   as an HTML-embedded message to `jon@howapped.com` (configurable), images
   included.
@@ -45,9 +49,10 @@ GitHub-like dark theme.
   deliberate trade-off). A *brand-new* file referenced by a *brand-new*
   embed may not resolve until that cache refreshes or the server restarts;
   embeds referencing files that already existed in the vault are unaffected.
-- Sticky header (Daily/Rando/Clipped stay visible) with an independently
-  scrolling, darker-background reading area below it. The active section has
-  a white outline, and the URL hash (`#daily` / `#rando` / `#clipped`)
+- Sticky header (all four buttons stay visible, divided from the content
+  below by a horizontal rule) with an independently scrolling,
+  darker-background reading area. The active section has a white outline,
+  and the URL hash (`#daily` / `#rando` / `#rando-clipped` / `#clipped`)
   reflects it — reloading, bookmarking, or sharing the URL restores the same
   view.
 
