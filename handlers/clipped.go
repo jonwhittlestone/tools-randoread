@@ -64,7 +64,7 @@ func (h *ClippedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html := markdown.Render(raw, assetImageResolver(h.VaultRoot, h.AuthToken))
+	html := markdown.Render(raw, vaultFileResolver(h.Lister, h.VaultRoot, h.AuthToken))
 	heading := "<h3>Date Clipped: " + mostRecent.ModifiedAt.In(randoLocation).Format(dateClippedFormat) + "</h3>\n"
 	html = heading + html
 

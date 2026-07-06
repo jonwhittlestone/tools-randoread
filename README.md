@@ -25,13 +25,26 @@ GitHub-like dark theme.
 - **Email this note** (burger menu, ☰) — emails the currently displayed note
   as an HTML-embedded message to `jon@howapped.com` (configurable), images
   included.
-- Obsidian-flavored markdown rendering: relative image embeds
-  (`![[file.png]]`) resolve against the vault's `assets/` folder, standard
+- Obsidian-flavored markdown rendering: relative embeds (`![[file.png]]`,
+  `![[note.pdf]]`) resolve by looking the filename up in a full recursive
+  vault listing — matching how Obsidian itself resolves them vault-wide,
+  not by assuming a fixed folder (needed because not everything lives in
+  `assets/`; e.g. tools-browsernotes' reMarkable sync drops handwritten-note
+  PDFs in `_remarkable-emails-via-browsernotes/`). Images render as `<img>`;
+  PDFs render as an inline `<object>` with a fallback link. Standard
   markdown links/images render normally, bare URLs autolink, GFM
   tables/tasklists supported. Obsidian Web Clipper frontmatter renders as
   "🔗 View original | example.com" (clickable link, then its base domain so
   it's clear where it leads) followed by the article's title as a heading,
   instead of raw YAML.
+- No static files are generated anywhere — Daily/Rando/Clipped all fetch and
+  render a note's own markdown straight from Dropbox on every request, so
+  text edits show up on the very next fetch. The one exception: resolving
+  an embed's filename to a path uses the same 24h-cached vault listing as
+  Rando/Clipped (see above — a fresh listing takes ~45s, so this is a
+  deliberate trade-off). A *brand-new* file referenced by a *brand-new*
+  embed may not resolve until that cache refreshes or the server restarts;
+  embeds referencing files that already existed in the vault are unaffected.
 - Sticky header (Daily/Rando/Clipped stay visible) with an independently
   scrolling, darker-background reading area below it. The active section has
   a white outline, and the URL hash (`#daily` / `#rando` / `#clipped`)

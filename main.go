@@ -75,22 +75,23 @@ func newMux(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/dropbox/status", dropboxConnect.HandleStatus)
 	mux.HandleFunc("POST /api/dropbox/disconnect", dropboxConnect.HandleDisconnect)
 
-	dailyHandler := handlers.NewDailyHandler(dropboxClient, cfg.VaultRoot, nil)
-	dailyHandler.AuthToken = cfg.AuthToken
-	mux.Handle("GET /api/daily", dailyHandler)
-
 	assetHandler := handlers.NewAssetHandler(dropboxClient, cfg.VaultRoot)
 	mux.Handle("GET /api/asset", assetHandler)
 
 	// A full recursive vault listing is slow (many paginated Dropbox round
-	// trips) and doesn't need to be fresher than this — Rando/Clipped share
-	// one cache so it's warmed by whichever gets clicked first.
+	// trips) and doesn't need to be fresher than this — Daily/Rando/Clipped
+	// all share one cache, warmed by whichever gets used first. Daily needs
+	// it too now, to resolve embeds vault-wide instead of assuming assets/.
 	vaultListCache := dropbox.NewCachedLister(dropboxClient, vaultListCacheTTL)
 	if !testing.Testing() {
 		// Avoid firing real Dropbox network calls from unit tests, which
 		// build a mux with a fake app key/no tokens via this same path.
 		go warmVaultListCache(vaultListCache, cfg.VaultRoot)
 	}
+
+	dailyHandler := handlers.NewDailyHandler(dropboxClient, vaultListCache, cfg.VaultRoot, nil)
+	dailyHandler.AuthToken = cfg.AuthToken
+	mux.Handle("GET /api/daily", dailyHandler)
 
 	randoPinStore := state.NewPinStore(filepath.Join(cfg.DataDir, "rando_pin.json"))
 	randoHandler := handlers.NewRandoHandler(dropboxClient, vaultListCache, cfg.VaultRoot, randoPinStore, nil, nil)

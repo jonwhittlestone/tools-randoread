@@ -201,6 +201,12 @@ a:hover {
   border-radius: 4px;
 }
 
+#note-content object {
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
 #note-content table {
   border-collapse: collapse;
   width: 100%;

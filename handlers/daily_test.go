@@ -5,9 +5,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
 )
 
 type fakeDownloader struct {
@@ -32,7 +35,7 @@ func TestHandleDailyRendersTodaysNote(t *testing.T) {
 	}}
 	now := time.Date(2026, 7, 5, 9, 0, 0, 0, time.UTC)
 
-	h := NewDailyHandler(downloader, "/DropsyncFiles/jw-mind", func() time.Time { return now })
+	h := NewDailyHandler(downloader, &fakeLister{}, "/DropsyncFiles/jw-mind", func() time.Time { return now })
 
 	req := httptest.NewRequest(http.MethodGet, "/api/daily", nil)
 	rec := httptest.NewRecorder()
@@ -65,7 +68,7 @@ func TestHandleDailyMissingNoteReturnsError(t *testing.T) {
 	downloader := &fakeDownloader{files: map[string][]byte{}}
 	now := time.Date(2026, 7, 5, 9, 0, 0, 0, time.UTC)
 
-	h := NewDailyHandler(downloader, "/DropsyncFiles/jw-mind", func() time.Time { return now })
+	h := NewDailyHandler(downloader, &fakeLister{}, "/DropsyncFiles/jw-mind", func() time.Time { return now })
 
 	req := httptest.NewRequest(http.MethodGet, "/api/daily", nil)
 	rec := httptest.NewRecorder()
@@ -83,9 +86,12 @@ func TestHandleDailyImageURLIncludesAuthToken(t *testing.T) {
 	downloader := &fakeDownloader{files: map[string][]byte{
 		"/DropsyncFiles/jw-mind/periodic/daily/2026-07-05-W27-Sun.md": []byte("![[photo.jpg]]"),
 	}}
+	lister := &fakeLister{entries: []dropbox.Entry{
+		{Path: "/DropsyncFiles/jw-mind/assets/photo.jpg", Name: "photo.jpg"},
+	}}
 	now := time.Date(2026, 7, 5, 9, 0, 0, 0, time.UTC)
 
-	h := NewDailyHandler(downloader, "/DropsyncFiles/jw-mind", func() time.Time { return now })
+	h := NewDailyHandler(downloader, lister, "/DropsyncFiles/jw-mind", func() time.Time { return now })
 	h.AuthToken = "secret-token"
 
 	req := httptest.NewRequest(http.MethodGet, "/api/daily", nil)
@@ -100,5 +106,36 @@ func TestHandleDailyImageURLIncludesAuthToken(t *testing.T) {
 	}
 	if !strings.Contains(body.HTML, "token=secret-token") {
 		t.Fatalf("expected the image URL to include the auth token, got: %s", body.HTML)
+	}
+}
+
+func TestHandleDailyResolvesEmbedOutsideAssetsFolder(t *testing.T) {
+	// Regression: not every embed lives in assets/ — tools-browsernotes'
+	// reMarkable sync drops handwritten-note PDFs in
+	// _remarkable-emails-via-browsernotes/ instead. Embeds must resolve via
+	// a vault-wide filename lookup, matching how Obsidian itself resolves
+	// them, not by assuming a fixed folder.
+	downloader := &fakeDownloader{files: map[string][]byte{
+		"/DropsyncFiles/jw-mind/periodic/daily/2026-07-05-W27-Sun.md": []byte("![[handwritten.pdf]]"),
+	}}
+	lister := &fakeLister{entries: []dropbox.Entry{
+		{Path: "/DropsyncFiles/jw-mind/_remarkable-emails-via-browsernotes/handwritten.pdf", Name: "handwritten.pdf"},
+	}}
+	now := time.Date(2026, 7, 5, 9, 0, 0, 0, time.UTC)
+
+	h := NewDailyHandler(downloader, lister, "/DropsyncFiles/jw-mind", func() time.Time { return now })
+
+	req := httptest.NewRequest(http.MethodGet, "/api/daily", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		HTML string `json:"html"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+
+	wantPath := url.QueryEscape("/DropsyncFiles/jw-mind/_remarkable-emails-via-browsernotes/handwritten.pdf")
+	if !strings.Contains(body.HTML, "<object data=") || !strings.Contains(body.HTML, wantPath) {
+		t.Fatalf("expected the PDF embed to resolve to its real path outside assets/, got: %s", body.HTML)
 	}
 }

@@ -120,7 +120,10 @@ func TestHandleClippedImageURLIncludesAuthToken(t *testing.T) {
 		"/DropsyncFiles/jw-mind/Clippings/a.md": []byte("![[photo.jpg]]"),
 	}}
 	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
-	entries := []dropbox.Entry{mdEntryModified("/DropsyncFiles/jw-mind/Clippings/a.md", now)}
+	entries := []dropbox.Entry{
+		mdEntryModified("/DropsyncFiles/jw-mind/Clippings/a.md", now),
+		{Path: "/DropsyncFiles/jw-mind/assets/photo.jpg", Name: "photo.jpg"},
+	}
 
 	h := NewClippedHandler(downloader, &fakeLister{entries: entries}, "/DropsyncFiles/jw-mind", func() time.Time { return now })
 	h.AuthToken = "secret-token"
