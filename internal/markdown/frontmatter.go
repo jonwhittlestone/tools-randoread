@@ -1,14 +1,18 @@
 package markdown
 
-import "strings"
+import (
+	"html"
+	"net/url"
+	"strings"
+)
 
 // stripFrontmatter removes a leading YAML frontmatter block (as produced by
 // Obsidian Web Clipper: "---\ntitle: ...\nsource: \"https://...\"\n---\n").
 // goldmark has no notion of frontmatter, so left alone it renders as a
-// garbled, unclickable paragraph. If a "source" field is present, its URL is
-// kept as a clickable link at the top of the body; everything else in the
-// block (title, tags, author, etc.) is just dropped as noise — the app
-// already shows a title of its own.
+// garbled, unclickable paragraph. If present, "source" becomes a clickable
+// link followed by its base domain (so it's clear which site it leads to
+// before clicking) and "title" becomes a heading below that — everything
+// else in the block (tags, author, etc.) is just dropped as noise.
 func stripFrontmatter(source string) string {
 	lines := strings.Split(source, "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
@@ -26,12 +30,30 @@ func stripFrontmatter(source string) string {
 		return source // no closing delimiter — not actually frontmatter
 	}
 
+	fmLines := lines[1:end]
 	body := strings.TrimLeft(strings.Join(lines[end+1:], "\n"), "\n")
 
-	if src := frontmatterField(lines[1:end], "source"); src != "" {
-		return "[🔗 View original](" + src + ")\n\n" + body
+	var header strings.Builder
+	if src := frontmatterField(fmLines, "source"); src != "" {
+		header.WriteString("[🔗 View original](" + src + ")" + sourceDomainSuffix(src) + "\n\n")
 	}
-	return body
+	if title := frontmatterField(fmLines, "title"); title != "" {
+		// Raw HTML (not markdown "# "+title) so the title can't be broken by
+		// markdown special characters it happens to contain.
+		header.WriteString("<h1>" + html.EscapeString(title) + "</h1>\n\n")
+	}
+
+	return header.String() + body
+}
+
+// sourceDomainSuffix returns " | [example.com](src)", or "" if src isn't a
+// parseable URL with a host.
+func sourceDomainSuffix(src string) string {
+	u, err := url.Parse(src)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return " | [" + u.Host + "](" + src + ")"
 }
 
 func frontmatterField(lines []string, key string) string {

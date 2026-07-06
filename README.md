@@ -28,10 +28,15 @@ GitHub-like dark theme.
 - Obsidian-flavored markdown rendering: relative image embeds
   (`![[file.png]]`) resolve against the vault's `assets/` folder, standard
   markdown links/images render normally, bare URLs autolink, GFM
-  tables/tasklists supported, and Obsidian Web Clipper frontmatter (`source:`
-  field) becomes a clickable "View original" link instead of raw YAML.
+  tables/tasklists supported. Obsidian Web Clipper frontmatter renders as
+  "🔗 View original | example.com" (clickable link, then its base domain so
+  it's clear where it leads) followed by the article's title as a heading,
+  instead of raw YAML.
 - Sticky header (Daily/Rando/Clipped stay visible) with an independently
-  scrolling, darker-background reading area below it.
+  scrolling, darker-background reading area below it. The active section has
+  a white outline, and the URL hash (`#daily` / `#rando` / `#clipped`)
+  reflects it — reloading, bookmarking, or sharing the URL restores the same
+  view.
 
 ## Usage
 

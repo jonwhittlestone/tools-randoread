@@ -110,6 +110,10 @@ a:hover {
   cursor: pointer;
 }
 
+.pill-button.active {
+  border: 2px solid white;
+}
+
 .spacer {
   flex: 1;
 }

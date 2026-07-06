@@ -123,17 +123,41 @@ func TestRenderStripsFrontmatterAndLinkifiesSource(t *testing.T) {
 	if !strings.Contains(html, `<a href="https://example.com/article?utm_source=x&amp;utm_medium=y">`) {
 		t.Fatalf("expected the source URL to be a clickable link, got: %s", html)
 	}
+	if !strings.Contains(html, `View original</a> | <a href="https://example.com/article?utm_source=x&amp;utm_medium=y">example.com</a>`) {
+		t.Fatalf("expected the source's base URL to be shown after a pipe, got: %s", html)
+	}
+	if !strings.Contains(html, "<h1>How to ask for help</h1>") {
+		t.Fatalf("expected the article's title as a heading, got: %s", html)
+	}
 	if !strings.Contains(html, "Body content here.") {
 		t.Fatalf("expected the body to still render, got: %s", html)
 	}
+	if strings.Index(html, "View original") > strings.Index(html, "<h1>") {
+		t.Fatalf("expected the title heading to come after the View original line, got: %s", html)
+	}
 }
 
-func TestRenderFrontmatterWithoutSourceIsJustStripped(t *testing.T) {
+func TestRenderFrontmatterTitleShownWithoutSource(t *testing.T) {
 	src := "---\ntitle: \"No source here\"\n---\nBody content."
 	html := Render([]byte(src), resolveNone)
 
 	if strings.Contains(html, "title:") {
-		t.Fatalf("expected frontmatter to be stripped, got: %s", html)
+		t.Fatalf("expected the raw frontmatter field to be stripped, got: %s", html)
+	}
+	if !strings.Contains(html, "<h1>No source here</h1>") {
+		t.Fatalf("expected the title heading even without a source link, got: %s", html)
+	}
+	if !strings.Contains(html, "Body content.") {
+		t.Fatalf("expected the body to still render, got: %s", html)
+	}
+}
+
+func TestRenderFrontmatterWithNeitherTitleNorSourceIsJustStripped(t *testing.T) {
+	src := "---\nauthor: \"Someone\"\n---\nBody content."
+	html := Render([]byte(src), resolveNone)
+
+	if strings.Contains(html, "<h1>") || strings.Contains(html, "View original") {
+		t.Fatalf("expected no additions when neither title nor source is present, got: %s", html)
 	}
 	if !strings.Contains(html, "Body content.") {
 		t.Fatalf("expected the body to still render, got: %s", html)

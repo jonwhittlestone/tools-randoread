@@ -24,6 +24,19 @@
   // different) Rando/Clipped note.
   let currentNote = null;
 
+  const modeButtons = { daily: dailyButton, rando: randoButton, clipped: clippedButton };
+
+  // Marks which section is active (border highlight) and reflects it in the
+  // URL hash so the current view is deep-linkable/bookmarkable/shareable.
+  // replaceState (not pushState) — switching sections shouldn't pile up
+  // browser-history entries.
+  function setActiveMode(mode) {
+    for (const [key, button] of Object.entries(modeButtons)) {
+      button.classList.toggle("active", key === mode);
+    }
+    window.history.replaceState(null, "", "#" + mode);
+  }
+
   function renderNote(data) {
     noteTitle.textContent = data.title;
     noteContent.innerHTML = data.html;
@@ -93,6 +106,7 @@
   });
 
   async function loadDaily() {
+    setActiveMode("daily");
     noteTitle.textContent = "Loading…";
     noteContent.innerHTML = "";
     try {
@@ -114,8 +128,9 @@
 
   // Rando and Clipped share the same fetch/render pattern, just against
   // different endpoints and buttons. Clickable at any time — no cooldown.
-  function makeFeature(button, apiPath, label) {
+  function makeFeature(button, apiPath, label, mode) {
     async function load() {
+      setActiveMode(mode);
       noteTitle.textContent = "Loading…";
       noteContent.innerHTML = "";
       try {
@@ -134,10 +149,11 @@
     }
 
     button.addEventListener("click", load);
+    return { load };
   }
 
-  makeFeature(randoButton, "api/rando", "Rando");
-  makeFeature(clippedButton, "api/clipped", "Clipped");
+  const rando = makeFeature(randoButton, "api/rando", "Rando", "rando");
+  const clipped = makeFeature(clippedButton, "api/clipped", "Clipped", "clipped");
 
   function storedTokenIsValid() {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY);
@@ -178,11 +194,25 @@
     return true;
   }
 
+  function loadFromHash() {
+    const hash = window.location.hash.replace("#", "");
+    if (hash === "rando") {
+      rando.load();
+    } else if (hash === "clipped") {
+      clipped.load();
+    } else {
+      loadDaily();
+    }
+  }
+
   async function init() {
     const loggedInFromURL = await tryLoginFromURL();
     if (loggedInFromURL || storedTokenIsValid()) {
       showApp();
-      loadDaily();
+      loadFromHash();
+      // Covers a manually edited/pasted hash on an already-open tab, not
+      // just a fresh page load.
+      window.addEventListener("hashchange", loadFromHash);
     } else {
       showLogin();
     }
