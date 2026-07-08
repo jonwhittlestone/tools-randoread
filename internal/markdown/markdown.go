@@ -21,8 +21,9 @@ import (
 type ImageResolver func(filename string) (url string, ok bool)
 
 var (
-	embedPattern    = regexp.MustCompile(`!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]`)
-	wikilinkPattern = regexp.MustCompile(`\[\[([^\]|]+)(?:\|([^\]]+))?\]\]`)
+	embedPattern         = regexp.MustCompile(`!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]`)
+	wikilinkPattern      = regexp.MustCompile(`\[\[([^\]|]+)(?:\|([^\]]+))?\]\]`)
+	standardImagePattern = regexp.MustCompile(`!\[([^\]]*)\]\(([^)\s]+)\)`)
 )
 
 var renderer = goldmark.New(
@@ -64,6 +65,27 @@ func preprocess(source string, resolveImage ImageResolver) string {
 			continue
 		}
 
+		// Runs before embedPattern below, which produces its own
+		// "![alt](url)" output — matching that here too would double-process
+		// an already-resolved URL.
+		line = standardImagePattern.ReplaceAllStringFunc(line, func(match string) string {
+			groups := standardImagePattern.FindStringSubmatch(match)
+			alt, ref := groups[1], groups[2]
+
+			if isAbsoluteRef(ref) {
+				return match
+			}
+
+			url, ok := resolveImage(ref)
+			if !ok {
+				return "*[missing image: " + ref + "]*"
+			}
+			if isPDF(ref) {
+				return renderPDFEmbed(url, alt)
+			}
+			return "![" + alt + "](" + url + ")"
+		})
+
 		line = embedPattern.ReplaceAllStringFunc(line, func(match string) string {
 			groups := embedPattern.FindStringSubmatch(match)
 			filename, alias := groups[1], groups[2]
@@ -96,6 +118,12 @@ func preprocess(source string, resolveImage ImageResolver) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// isAbsoluteRef reports whether ref is already directly servable (a full
+// URL or a data URI) and so shouldn't be routed through resolveImage.
+func isAbsoluteRef(ref string) bool {
+	return strings.Contains(ref, "://") || strings.HasPrefix(ref, "data:")
 }
 
 func isPDF(filename string) bool {

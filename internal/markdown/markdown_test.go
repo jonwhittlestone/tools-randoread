@@ -41,6 +41,53 @@ func TestRenderStandardMarkdownImageIsAbsolute(t *testing.T) {
 	}
 }
 
+func TestRenderResolvesRelativeStandardMarkdownImage(t *testing.T) {
+	// Regression: web-clipped articles sometimes use plain markdown image
+	// syntax with a path relative to the note's own folder — not an
+	// Obsidian ![[embed]] and not absolute — e.g. "![alt](images/photo.jpg)"
+	// from a sibling images/ folder. Left untouched, the browser resolves
+	// it against the current page URL and it 404s.
+	resolve := func(ref string) (string, bool) {
+		if ref == "images/photo.jpg" {
+			return "api/asset?path=/family/stoic-parenting/images/photo.jpg", true
+		}
+		return "", false
+	}
+
+	html := Render([]byte("![a photo](images/photo.jpg)"), resolve)
+	if !strings.Contains(html, `<img src="api/asset?path=/family/stoic-parenting/images/photo.jpg" alt="a photo">`) {
+		t.Fatalf("expected the relative image to resolve, got: %s", html)
+	}
+}
+
+func TestRenderStandardMarkdownImageAbsoluteURLNotRerouted(t *testing.T) {
+	// The resolver must not be called for absolute URLs — they're already
+	// servable directly.
+	called := false
+	resolve := func(ref string) (string, bool) {
+		called = true
+		return "", false
+	}
+
+	html := Render([]byte("![a cat](https://example.com/cat.png)"), resolve)
+	if called {
+		t.Fatal("expected resolveImage not to be called for an absolute URL")
+	}
+	if !strings.Contains(html, `<img src="https://example.com/cat.png" alt="a cat">`) {
+		t.Fatalf("expected the absolute image to render as-is, got: %s", html)
+	}
+}
+
+func TestRenderShowsPlaceholderForUnresolvedRelativeStandardMarkdownImage(t *testing.T) {
+	html := Render([]byte("![alt](images/missing.jpg)"), resolveNone)
+	if strings.Contains(html, "<img") {
+		t.Fatalf("expected no <img> for an unresolved relative image, got: %s", html)
+	}
+	if !strings.Contains(html, "images/missing.jpg") {
+		t.Fatalf("expected the path to still be visible as a placeholder, got: %s", html)
+	}
+}
+
 func TestRenderResolvesRelativeObsidianImageEmbed(t *testing.T) {
 	resolve := func(filename string) (string, bool) {
 		if filename == "Pasted image 20260122173316.png" {

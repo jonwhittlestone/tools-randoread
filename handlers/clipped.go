@@ -13,6 +13,12 @@ import (
 // hour:minute — "hh:ss" as literally written would omit minutes entirely).
 const dateClippedFormat = "2006-01-02 15:04"
 
+// dateClippedHeading renders the "Date Clipped:" heading shared by
+// ClippedHandler and RandoHandler-scoped-to-Clippings ("Rando Clipped").
+func dateClippedHeading(modifiedAt time.Time) string {
+	return "<h3>Date Clipped: " + modifiedAt.In(randoLocation).Format(dateClippedFormat) + "</h3>\n"
+}
+
 // ClippingsSubpath is where web clippings live within the vault — see the
 // vault's CLAUDE.md ("Clippings/ - Web clippings and saved articles").
 const ClippingsSubpath = "/Clippings"
@@ -65,8 +71,7 @@ func (h *ClippedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	html := markdown.Render(raw, vaultFileResolver(h.Lister, h.VaultRoot, h.AuthToken))
-	heading := "<h3>Date Clipped: " + mostRecent.ModifiedAt.In(randoLocation).Format(dateClippedFormat) + "</h3>\n"
-	html = heading + html
+	html = dateClippedHeading(mostRecent.ModifiedAt) + html
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck

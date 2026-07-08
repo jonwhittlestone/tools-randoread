@@ -15,6 +15,12 @@ import (
 type Pin struct {
 	Path        string    `json:"path"`
 	PeriodStart time.Time `json:"period_start"`
+
+	// ModifiedAt is the pinned file's Dropbox modified time, carried along
+	// so "Rando Clipped" can show its "Date Clipped:" heading on the fast
+	// (already-pinned) path without re-listing the vault. Zero for plain
+	// Rando, which doesn't use it.
+	ModifiedAt time.Time `json:"modified_at,omitempty"`
 }
 
 // PinStore persists a Pin to a JSON file.

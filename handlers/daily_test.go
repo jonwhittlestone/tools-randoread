@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
+	"github.com/jonwhittlestone/tools-randoread/internal/state"
 )
 
 type fakeDownloader struct {
@@ -137,5 +139,41 @@ func TestHandleDailyResolvesEmbedOutsideAssetsFolder(t *testing.T) {
 	wantPath := url.QueryEscape("/DropsyncFiles/jw-mind/_remarkable-emails-via-browsernotes/handwritten.pdf")
 	if !strings.Contains(body.HTML, "<object data=") || !strings.Contains(body.HTML, wantPath) {
 		t.Fatalf("expected the PDF embed to resolve to its real path outside assets/, got: %s", body.HTML)
+	}
+}
+
+func TestHandleRandoResolvesRelativeStandardMarkdownImageInSiblingFolder(t *testing.T) {
+	// Regression: a real note under family/guidance/stoic-parenting/ used
+	// plain markdown image syntax ("![alt](images/photo.jpg)"), relative to
+	// its own folder — not an Obsidian ![[embed]], and not the vault's
+	// assets/ folder either. This was never routed through any resolver at
+	// all, so it always rendered as a broken <img> pointing at the current
+	// page's own URL. (Using RandoHandler here only because it's the
+	// simplest handler to target an arbitrary path with — the fix itself is
+	// shared by Daily/Rando/Clipped via vaultFileResolver.)
+	notePath := "/DropsyncFiles/jw-mind/family/guidance/stoic-parenting/01-41-x.md"
+	downloader := &fakeDownloader{files: map[string][]byte{
+		notePath: []byte("![stoicism parenting](images/iStock-1388786350-jpg.webp)"),
+	}}
+	entries := []dropbox.Entry{
+		mdEntry(notePath),
+		{Path: "/DropsyncFiles/jw-mind/family/guidance/stoic-parenting/images/iStock-1388786350-jpg.webp", Name: "iStock-1388786350-jpg.webp"},
+	}
+	now := time.Date(2026, 7, 5, 9, 0, 0, 0, time.UTC)
+	pinStore := state.NewPinStore(filepath.Join(t.TempDir(), "pin.json"))
+	h := NewRandoHandler(downloader, &fakeLister{entries: entries}, "/DropsyncFiles/jw-mind", pinStore, func() time.Time { return now }, func(int) int { return 0 })
+
+	req := httptest.NewRequest(http.MethodGet, "/api/rando", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		HTML string `json:"html"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+
+	wantPath := url.QueryEscape("/DropsyncFiles/jw-mind/family/guidance/stoic-parenting/images/iStock-1388786350-jpg.webp")
+	if !strings.Contains(body.HTML, "<img") || !strings.Contains(body.HTML, wantPath) {
+		t.Fatalf("expected the relative image to resolve via bare-filename fallback, got: %s", body.HTML)
 	}
 }

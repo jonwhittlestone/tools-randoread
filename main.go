@@ -103,6 +103,7 @@ func newMux(cfg Config) http.Handler {
 	randoClippedPinStore := state.NewPinStore(filepath.Join(cfg.DataDir, "rando_clipped_pin.json"))
 	randoClippedHandler := handlers.NewRandoHandler(dropboxClient, vaultListCache, cfg.VaultRoot, randoClippedPinStore, nil, nil)
 	randoClippedHandler.ListPath = cfg.VaultRoot + handlers.ClippingsSubpath
+	randoClippedHandler.ShowDateClippedHeading = true
 	randoClippedHandler.AuthToken = cfg.AuthToken
 	mux.Handle("GET /api/rando-clipped", randoClippedHandler)
 
