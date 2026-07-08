@@ -36,6 +36,11 @@ type RandoHandler struct {
 	// VaultRoot when empty.
 	ListPath string
 
+	// ShowDateClippedHeading adds the same "Date Clipped:" heading
+	// ClippedHandler shows — set for "Rando Clipped" only; plain Rando
+	// (picking from anywhere in the vault) doesn't have a clipped date.
+	ShowDateClippedHeading bool
+
 	// AuthToken is embedded in resolved image URLs — see vaultFileResolver.
 	AuthToken string
 }
@@ -107,7 +112,7 @@ func (h *RandoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if pin, err := h.PinStore.Load(); err == nil && pin.Path != "" && pin.PeriodStart.Equal(period) {
 		if raw, err := h.Downloader.Download(pin.Path); err == nil {
-			h.respond(w, pin.Path, raw)
+			h.respond(w, pin.Path, pin.ModifiedAt, raw)
 			return
 		}
 		// Pinned note vanished (e.g. deleted) — fall through and pick a
@@ -134,16 +139,19 @@ func (h *RandoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.PinStore.Save(state.Pin{Path: chosen.Path, PeriodStart: period}); err != nil {
+	if err := h.PinStore.Save(state.Pin{Path: chosen.Path, PeriodStart: period, ModifiedAt: chosen.ModifiedAt}); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist today's pick")
 		return
 	}
 
-	h.respond(w, chosen.Path, raw)
+	h.respond(w, chosen.Path, chosen.ModifiedAt, raw)
 }
 
-func (h *RandoHandler) respond(w http.ResponseWriter, path string, raw []byte) {
+func (h *RandoHandler) respond(w http.ResponseWriter, path string, modifiedAt time.Time, raw []byte) {
 	html := markdown.Render(raw, vaultFileResolver(h.Lister, h.VaultRoot, h.AuthToken))
+	if h.ShowDateClippedHeading {
+		html = dateClippedHeading(modifiedAt) + html
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck

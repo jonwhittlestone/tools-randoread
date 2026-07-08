@@ -22,6 +22,7 @@ GitHub-like dark theme.
   candidates come from `Clippings/` only. Gates independently of Rando (its
   own persisted pick). Title still reads `Clippings / name` since it's
   formatted relative to the true vault root, not the Clippings subfolder.
+  Also shows the "Date Clipped:" heading, like Most Recently Clipped does.
 - **Most Recently Clipped ✂️** — fetches the most recently modified article
   from the vault's `Clippings/` folder, any time (shares Rando's listing
   cache and file filters). Rendered with a "Date Clipped: yyyy-mm-dd hh:mm"

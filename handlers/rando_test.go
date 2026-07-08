@@ -170,6 +170,54 @@ func TestHandleRandoListPathScopesCandidatesButVaultRootTitles(t *testing.T) {
 	}
 }
 
+func TestHandleRandoClippedIncludesDateClippedHeading(t *testing.T) {
+	// "Rando Clipped" should show the same "Date Clipped:" heading that
+	// "Most Recently Clipped" already has — plain Rando (picking from
+	// anywhere in the vault) should not.
+	modified := time.Date(2026, 1, 10, 14, 5, 0, 0, time.UTC)
+	entries := []dropbox.Entry{mdEntryModified("/DropsyncFiles/jw-mind/Clippings/article.md", modified)}
+	now := modified.Add(time.Hour)
+
+	pinStore := state.NewPinStore(filepath.Join(t.TempDir(), "pin.json"))
+	h := NewRandoHandler(&fakeDownloader{files: map[string][]byte{
+		"/DropsyncFiles/jw-mind/Clippings/article.md": []byte("## a"),
+	}}, &fakeLister{entries: entries}, "/DropsyncFiles/jw-mind", pinStore, func() time.Time { return now }, func(int) int { return 0 })
+	h.ListPath = "/DropsyncFiles/jw-mind/Clippings"
+	h.ShowDateClippedHeading = true
+
+	req := httptest.NewRequest(http.MethodGet, "/api/rando-clipped", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		HTML string `json:"html"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+
+	want := "<h3>Date Clipped: " + modified.In(randoLocation).Format(dateClippedFormat) + "</h3>"
+	if !strings.Contains(body.HTML, want) {
+		t.Fatalf("expected heading %q, got: %s", want, body.HTML)
+	}
+}
+
+func TestHandleRandoPlainDoesNotIncludeDateClippedHeading(t *testing.T) {
+	entries := []dropbox.Entry{mdEntry("/DropsyncFiles/jw-mind/a.md")}
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	h, _ := newTestRandoHandler(t, entries, now, 0)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/rando", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		HTML string `json:"html"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if strings.Contains(body.HTML, "Date Clipped") {
+		t.Fatalf("expected plain Rando to have no Date Clipped heading, got: %s", body.HTML)
+	}
+}
+
 func TestHandleRandoImageURLIncludesAuthToken(t *testing.T) {
 	downloader := &fakeDownloader{files: map[string][]byte{
 		"/DropsyncFiles/jw-mind/a.md": []byte("![[photo.jpg]]"),
