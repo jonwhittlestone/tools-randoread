@@ -41,7 +41,7 @@ func newTestRandoHandler(t *testing.T, entries []dropbox.Entry, now time.Time, p
 }
 
 func mdEntry(path string) dropbox.Entry {
-	return dropbox.Entry{Path: path, Name: filepath.Base(path), IsFolder: false}
+	return dropbox.Entry{Path: path, Name: filepath.Base(path), IsFolder: false, Size: 1024}
 }
 
 func TestHandleRandoPicksAMarkdownFile(t *testing.T) {
@@ -96,6 +96,32 @@ func TestHandleRandoExcludesConflictedCopies(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
 	if body.Title != "notes / idea" {
 		t.Errorf("expected the non-conflicted copy to be chosen, got title %q", body.Title)
+	}
+}
+
+func TestHandleRandoExcludesEmptyFiles(t *testing.T) {
+	// Obsidian Web Clipper sometimes creates a 0-byte placeholder that Dropbox
+	// syncs before the real content arrives — these should never be surfaced.
+	emptyEntry := mdEntry("/DropsyncFiles/jw-mind/Clippings/ghost.md")
+	emptyEntry.Size = 0
+	entries := []dropbox.Entry{
+		emptyEntry,
+		mdEntry("/DropsyncFiles/jw-mind/notes/idea.md"),
+	}
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	// pickIndex=0 would choose the empty file if it weren't filtered out.
+	h, _ := newTestRandoHandler(t, entries, now, 0)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/rando", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		Title string `json:"title"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if body.Title != "notes / idea" {
+		t.Errorf("expected the empty file to be excluded, got title %q", body.Title)
 	}
 }
 

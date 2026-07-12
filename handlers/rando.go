@@ -96,6 +96,7 @@ func candidateNotes(entries []dropbox.Entry, vaultRoot string) []dropbox.Entry {
 	for _, e := range entries {
 		if e.IsFolder ||
 			!strings.HasSuffix(e.Name, ".md") ||
+			e.Size == 0 || // skip empty placeholder files (e.g. Web Clipper sync ghosts)
 			isConflictedCopy(e.Name) ||
 			isExcalidrawDrawing(e.Name) ||
 			isInTemplatesDir(e.Path, vaultRoot) {

@@ -23,6 +23,7 @@ type Entry struct {
 	Name       string
 	IsFolder   bool
 	ModifiedAt time.Time // zero value for folders, which have no modified time
+	Size       int64     // file size in bytes; zero for folders
 }
 
 // Client is a minimal Dropbox API client: OAuth2+PKCE token exchange and
@@ -140,6 +141,7 @@ type listFolderEntry struct {
 	Name           string `json:"name"`
 	PathDisplay    string `json:"path_display"`
 	ServerModified string `json:"server_modified"`
+	Size           int64  `json:"size"`
 }
 
 type listFolderResponse struct {
@@ -203,6 +205,7 @@ func toEntries(raw []listFolderEntry) []Entry {
 			Path:     e.PathDisplay,
 			Name:     e.Name,
 			IsFolder: e.Type == "folder",
+			Size:     e.Size,
 		}
 		if e.ServerModified != "" {
 			if t, err := time.Parse(time.RFC3339, e.ServerModified); err == nil {
