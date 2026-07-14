@@ -83,6 +83,9 @@ func preprocess(source string, resolveImage ImageResolver) string {
 			if isPDF(ref) {
 				return renderPDFEmbed(url, alt)
 			}
+			if isVideo(ref) {
+				return renderVideoEmbed(url, alt)
+			}
 			return "![" + alt + "](" + url + ")"
 		})
 
@@ -101,6 +104,9 @@ func preprocess(source string, resolveImage ImageResolver) string {
 
 			if isPDF(filename) {
 				return renderPDFEmbed(url, display)
+			}
+			if isVideo(filename) {
+				return renderVideoEmbed(url, display)
 			}
 			return "![" + display + "](" + url + ")"
 		})
@@ -130,6 +136,19 @@ func isPDF(filename string) bool {
 	return strings.HasSuffix(strings.ToLower(filename), ".pdf")
 }
 
+// isVideo reports whether filename is a video format the vault embeds
+// (see videos/ folder) — these need a <video> tag rather than <img>, which
+// can't play video at all.
+func isVideo(filename string) bool {
+	lower := strings.ToLower(filename)
+	for _, ext := range []string{".mp4", ".webm", ".mov", ".m4v"} {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 // renderPDFEmbed renders a PDF as an inline <object> (most desktop and
 // mobile browsers show their native PDF viewer for this), with a plain link
 // as fallback content for the rare viewer that renders neither — e.g. a
@@ -137,6 +156,16 @@ func isPDF(filename string) bool {
 func renderPDFEmbed(url, display string) string {
 	return fmt.Sprintf(
 		`<object data="%s" type="application/pdf" width="100%%" height="600"><p>📄 <a href="%s">%s</a></p></object>`,
+		url, url, stdhtml.EscapeString(display),
+	)
+}
+
+// renderVideoEmbed renders a video as an inline <video controls> element,
+// with a plain link as fallback content for a browser that can't play the
+// source format.
+func renderVideoEmbed(url, display string) string {
+	return fmt.Sprintf(
+		`<video controls preload="metadata" style="max-width:100%%"><source src="%s">🎬 <a href="%s">%s</a></video>`,
 		url, url, stdhtml.EscapeString(display),
 	)
 }

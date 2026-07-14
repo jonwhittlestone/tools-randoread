@@ -132,6 +132,39 @@ func TestRenderShowsPlaceholderForUnresolvedPDFEmbed(t *testing.T) {
 	}
 }
 
+func TestRenderResolvesRelativeVideoEmbedAsVideoTag(t *testing.T) {
+	resolve := func(filename string) (string, bool) {
+		if filename == "stretch.mp4" {
+			return "api/asset?path=/videos/stretch.mp4", true
+		}
+		return "", false
+	}
+
+	html := Render([]byte("![[stretch.mp4]]"), resolve)
+	if !strings.Contains(html, `<video controls`) {
+		t.Fatalf("expected the video embed to resolve to a <video> tag, got: %s", html)
+	}
+	if !strings.Contains(html, `<source src="api/asset?path=/videos/stretch.mp4">`) {
+		t.Fatalf("expected the resolved asset URL as the video source, got: %s", html)
+	}
+	if !strings.Contains(html, `<a href="api/asset?path=/videos/stretch.mp4">`) {
+		t.Fatalf("expected a fallback link for browsers that can't play the <video>, got: %s", html)
+	}
+	if strings.Contains(html, "<img") {
+		t.Fatalf("a video embed should never render as <img> — browsers can't play video there, got: %s", html)
+	}
+}
+
+func TestRenderShowsPlaceholderForUnresolvedVideoEmbed(t *testing.T) {
+	html := Render([]byte("![[missing.mp4]]"), resolveNone)
+	if strings.Contains(html, "<video") {
+		t.Fatalf("expected no <video> for an unresolved embed, got: %s", html)
+	}
+	if !strings.Contains(html, "missing.mp4") {
+		t.Fatalf("expected the filename to still be visible as a placeholder, got: %s", html)
+	}
+}
+
 func TestRenderShowsPlaceholderForUnresolvedImageEmbed(t *testing.T) {
 	html := Render([]byte("![[missing.png]]"), resolveNone)
 	if strings.Contains(html, "<img") {
