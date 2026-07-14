@@ -153,6 +153,9 @@ func TestRenderResolvesRelativeVideoEmbedAsVideoTag(t *testing.T) {
 	if strings.Contains(html, "<img") {
 		t.Fatalf("a video embed should never render as <img> — browsers can't play video there, got: %s", html)
 	}
+	if !strings.Contains(html, `<div class="video-embed">`) || !strings.Contains(html, `class="video-toggle"`) {
+		t.Fatalf("expected the video to be wrapped with a collapse/expand toggle, got: %s", html)
+	}
 }
 
 func TestRenderShowsPlaceholderForUnresolvedVideoEmbed(t *testing.T) {

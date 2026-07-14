@@ -49,6 +49,20 @@
     currentNote = { path: data.path, title: data.title };
   }
 
+  // Delegated once (rather than re-bound per video) since noteContent's
+  // innerHTML — and every .video-embed inside it — is replaced wholesale on
+  // every Daily/Rando/Clipped load.
+  noteContent.addEventListener("click", (event) => {
+    const button = event.target.closest(".video-toggle");
+    if (!button) return;
+
+    const wrapper = button.closest(".video-embed");
+    const collapsed = wrapper.classList.toggle("collapsed");
+    button.textContent = collapsed ? "+" : "−";
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.setAttribute("aria-label", collapsed ? "Expand video" : "Collapse video");
+  });
+
   function storedToken() {
     return localStorage.getItem(STORAGE_TOKEN_KEY);
   }

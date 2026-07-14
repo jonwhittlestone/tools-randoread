@@ -213,6 +213,38 @@ a:hover {
   border-radius: 4px;
 }
 
+/* ── Video embeds (collapsible — see the .video-toggle handler in app.js) ── */
+
+#note-content .video-embed {
+  margin: 0.5em 0;
+}
+
+#note-content .video-embed video {
+  display: block;
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+#note-content .video-embed.collapsed video {
+  display: none;
+}
+
+#note-content .video-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 6px;
+  background: var(--bg-secondary);
+  color: var(--h2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
 #note-content table {
   border-collapse: collapse;
   width: 100%;

@@ -162,10 +162,12 @@ func renderPDFEmbed(url, display string) string {
 
 // renderVideoEmbed renders a video as an inline <video controls> element,
 // with a plain link as fallback content for a browser that can't play the
-// source format.
+// source format. Wrapped with a −/+ toggle (see static/app.js) so a tall
+// video doesn't force scrolling past it to reach the rest of the note —
+// expanded by default, collapsible on click.
 func renderVideoEmbed(url, display string) string {
 	return fmt.Sprintf(
-		`<video controls preload="metadata" style="max-width:100%%"><source src="%s">🎬 <a href="%s">%s</a></video>`,
+		`<div class="video-embed"><button type="button" class="video-toggle" aria-expanded="true" aria-label="Collapse video">−</button><video controls preload="metadata"><source src="%s">🎬 <a href="%s">%s</a></video></div>`,
 		url, url, stdhtml.EscapeString(display),
 	)
 }
