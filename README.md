@@ -84,6 +84,27 @@ vault, same app key) — only a redirect URI needs to be added once in the
 [Dropbox App Console](https://www.dropbox.com/developers/apps):
 `https://howapped.zapto.org/randoread/api/dropbox/callback`.
 
+## Send to reMarkable (CLI)
+
+`cmd/send-to-remarkable` is a standalone terminal tool (not wired into the
+web UI) that uploads an EPUB to a reMarkable tablet over SFTP and registers
+it in xochitl's document store, so it shows up properly in **My Files**
+(with title/author/cover — xochitl paginates it on import) rather than
+sitting invisibly in the tablet's `/home/root/`.
+
+Requires SSH over WLAN already enabled on the tablet (one-time setup over
+USB — see `main-remarkable.md` in the `26-remarkable-tablet` vault project
+for the step-by-step guide and how this document-store schema was reverse
+engineered from a live device).
+
+```bash
+go build -o bin/send-to-remarkable ./cmd/send-to-remarkable
+REMARKABLE_PASSWORD=<tablet root password> ./bin/send-to-remarkable path/to/book.epub
+
+# optional flags: -host (default 192.168.0.147), -port (22), -user (root),
+# -title (default: filename without extension)
+```
+
 ## Local development
 
 Requires Go 1.22+.
@@ -111,11 +132,17 @@ internal/markdown/      — goldmark-based renderer + Obsidian preprocessing
 internal/note/          — vault path/title formatting
 internal/state/         — Rando's "note of the day" pin (JSON file)
 internal/mail/          — SMTP sending
+internal/remarkable/    — SFTP upload + xochitl document-store registration
+                          for the send-to-remarkable CLI (below)
+cmd/send-to-remarkable/ — standalone CLI, not part of the web server
 static/                 — vanilla JS/CSS single-page app, no build step
 ```
 
-Single third-party Go dependency: `goldmark` (pure Go, no CGO). Everything
-else is stdlib.
+Third-party Go dependencies: `goldmark` (markdown rendering, pure Go);
+`golang.org/x/crypto/ssh` + `github.com/pkg/sftp` (send-to-remarkable CLI
+only — pinned to versions requiring Go 1.15+ so they don't force a bump of
+this repo's `go 1.22.2` toolchain pin, which the Dockerfile/CI also pin to).
+Everything else is stdlib.
 
 ## Deploying
 
