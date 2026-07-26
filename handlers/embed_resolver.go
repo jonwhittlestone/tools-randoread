@@ -32,6 +32,24 @@ import (
 // URL directly via <img src>/<object data>, which can't carry the
 // X-Auth-Token header — RequireToken accepts either (see handlers/auth.go).
 func vaultFileResolver(lister NoteLister, vaultRoot, authToken string) markdown.ImageResolver {
+	resolvePath := vaultPathResolver(lister, vaultRoot)
+
+	return func(ref string) (string, bool) {
+		path, ok := resolvePath(ref)
+		if !ok {
+			return "", false
+		}
+		q := url.Values{"path": {path}, "token": {authToken}}
+		return "api/asset?" + q.Encode(), true
+	}
+}
+
+// vaultPathResolver is the lazy-loaded, once-per-call vault listing lookup
+// vaultFileResolver builds its proxy URLs on top of, extracted so the
+// send-to-remarkable epub builder (internal/epub) can resolve an embed ref
+// straight to a downloadable vault path — it needs the actual file bytes to
+// embed, not a browser-servable URL.
+func vaultPathResolver(lister NoteLister, vaultRoot string) func(ref string) (string, bool) {
 	var (
 		once   sync.Once
 		byPath map[string]bool
@@ -56,18 +74,13 @@ func vaultFileResolver(lister NoteLister, vaultRoot, authToken string) markdown.
 		}
 	}
 
-	buildURL := func(path string) string {
-		q := url.Values{"path": {path}, "token": {authToken}}
-		return "api/asset?" + q.Encode()
-	}
-
 	return func(ref string) (string, bool) {
 		once.Do(load)
 
 		if strings.Contains(ref, "/") {
 			fullPath := vaultRoot + "/" + ref
 			if byPath[fullPath] {
-				return buildURL(fullPath), true
+				return fullPath, true
 			}
 			// Fall through to a bare-filename lookup on the last path
 			// segment, in case the given path doesn't line up exactly
@@ -76,9 +89,6 @@ func vaultFileResolver(lister NoteLister, vaultRoot, authToken string) markdown.
 		}
 
 		path, ok := byName[ref]
-		if !ok {
-			return "", false
-		}
-		return buildURL(path), true
+		return path, ok
 	}
 }

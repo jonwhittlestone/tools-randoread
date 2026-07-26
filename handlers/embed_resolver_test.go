@@ -55,3 +55,32 @@ func TestVaultFileResolverReturnsFalseForUnknownFile(t *testing.T) {
 		t.Fatal("expected an unknown file to be unresolved")
 	}
 }
+
+// vaultPathResolver is the plain path-lookup vaultFileResolver builds its
+// proxy URLs on top of — also used directly by the send-to-remarkable epub
+// builder, which needs the real vault path to download bytes, not a URL.
+func TestVaultPathResolverResolvesBareFilename(t *testing.T) {
+	lister := &fakeLister{entries: []dropbox.Entry{
+		{Path: "/vault/assets/photo.jpg", Name: "photo.jpg"},
+	}}
+	resolve := vaultPathResolver(lister, "/vault")
+
+	got, ok := resolve("photo.jpg")
+	if !ok {
+		t.Fatal("expected photo.jpg to resolve")
+	}
+	if got != "/vault/assets/photo.jpg" {
+		t.Fatalf("resolve(%q) = %q, want %q", "photo.jpg", got, "/vault/assets/photo.jpg")
+	}
+}
+
+func TestVaultPathResolverReturnsFalseForUnknownFile(t *testing.T) {
+	lister := &fakeLister{entries: []dropbox.Entry{
+		{Path: "/vault/assets/photo.jpg", Name: "photo.jpg"},
+	}}
+	resolve := vaultPathResolver(lister, "/vault")
+
+	if _, ok := resolve("missing.jpg"); ok {
+		t.Fatal("expected an unknown file to be unresolved")
+	}
+}

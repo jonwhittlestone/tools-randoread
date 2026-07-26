@@ -1,8 +1,10 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -70,6 +72,36 @@ func TestUnauthenticatedAPIRequestRejected(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status 401, got %d", rec.Code)
+	}
+}
+
+func TestClippingsRoutesWired(t *testing.T) {
+	mux := newMux(testConfig(t))
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodGet, "/api/clippings?token=secret", ""},
+		{http.MethodPost, "/api/clippings/send-to-remarkable?token=secret", `{"path":"x","title":"y"}`},
+	}
+
+	for _, c := range cases {
+		var body io.Reader
+		if c.body != "" {
+			body = strings.NewReader(c.body)
+		}
+		req := httptest.NewRequest(c.method, c.path, body)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		// Neither Dropbox nor the tablet are configured in tests, so these
+		// fail at the network call (502) — this just pins that the route
+		// exists and passes auth, not a 404/401.
+		if rec.Code == http.StatusNotFound || rec.Code == http.StatusUnauthorized {
+			t.Errorf("%s %s: expected the route to be wired and authorized, got %d: %s", c.method, c.path, rec.Code, rec.Body.String())
+		}
 	}
 }
 

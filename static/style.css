@@ -161,6 +161,18 @@ a:hover {
   word-break: break-word;
 }
 
+/* "Clippings" breadcrumb segment — links to the clippings list+Send to RM2
+   table; see renderTitle()/animateEllipsis() in app.js. */
+.breadcrumb-link {
+  color: var(--h2);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.breadcrumb-link:hover {
+  color: var(--h2);
+}
+
 /* Scrolls independently of .app-header, with a darker background so the
    reading area is visually distinct from the controls above it. */
 #note-scroll {
@@ -254,4 +266,21 @@ a:hover {
 #note-content td {
   border: 1px solid var(--border);
   padding: 6px 10px;
+}
+
+/* ── Clippings list table (see renderClippingsTable() in app.js) ────────── */
+
+.send-to-rm2-button {
+  background: var(--bg-primary);
+  color: var(--h2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.send-to-rm2-button:disabled {
+  color: var(--text-muted);
+  cursor: default;
 }

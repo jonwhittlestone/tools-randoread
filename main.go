@@ -13,6 +13,7 @@ import (
 	"github.com/jonwhittlestone/tools-randoread/handlers"
 	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
 	"github.com/jonwhittlestone/tools-randoread/internal/mail"
+	"github.com/jonwhittlestone/tools-randoread/internal/remarkable"
 	"github.com/jonwhittlestone/tools-randoread/internal/state"
 )
 
@@ -51,6 +52,17 @@ type Config struct {
 	EmailPass string
 	SMTPHost  string
 	SMTPPort  string
+
+	// RemarkableHost/Port/User/Password connect to the reMarkable tablet's
+	// SSH/SFTP server for the "Send to RM2" Clippings feature — see
+	// cmd/send-to-remarkable and internal/remarkable, and the
+	// 26-remarkable-tablet vault project for how SSH-over-WLAN gets enabled
+	// on the tablet in the first place. Left empty, /api/clippings/send-to-
+	// remarkable fails at send time (no tablet configured), not at startup.
+	RemarkableHost     string
+	RemarkableSSHPort  string
+	RemarkableUser     string
+	RemarkablePassword string
 }
 
 // newMux wires up all routes and wraps them in the token-auth middleware.
@@ -111,6 +123,19 @@ func newMux(cfg Config) http.Handler {
 	clippedHandler.AuthToken = cfg.AuthToken
 	mux.Handle("GET /api/clipped", clippedHandler)
 
+	// Deliberately wired with dropboxClient directly, not vaultListCache —
+	// every click on the Clippings breadcrumb link should refetch fresh
+	// from Dropbox rather than serving a stale (up to 24h old) listing.
+	clippingsListHandler := handlers.NewClippingsListHandler(dropboxClient, cfg.VaultRoot, nil)
+	mux.Handle("GET /api/clippings", clippingsListHandler)
+
+	remarkableCfg := remarkable.Config{Host: cfg.RemarkableHost, Port: cfg.RemarkableSSHPort, User: cfg.RemarkableUser, Password: cfg.RemarkablePassword}
+	sendToRemarkable := func(epubPath, title string) (*remarkable.UploadResult, error) {
+		return remarkable.SendEpub(remarkableCfg, epubPath, title)
+	}
+	clippingsSendHandler := handlers.NewClippingsSendHandler(dropboxClient, dropboxClient, cfg.VaultRoot, sendToRemarkable)
+	mux.Handle("POST /api/clippings/send-to-remarkable", clippingsSendHandler)
+
 	smtpConfig := mail.Config{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.EmailUser, Password: cfg.EmailPass}
 	sendFunc := func(subject, html string) error {
 		return mail.Send(smtpConfig, cfg.EmailFrom, cfg.EmailTo, subject, html)
@@ -154,6 +179,14 @@ const (
 	defaultEmailTo       = "jon@howapped.com"
 	defaultSMTPHost      = "smtp.gmail.com"
 	defaultSMTPPort      = "587"
+
+	// defaultRemarkableHost/Port/User match the reMarkable's own GPLv3
+	// Compliance screen — see main-remarkable.md in the
+	// 26-remarkable-tablet vault project. Only REMARKABLE_PASSWORD has no
+	// sane default (it's a secret, and also device-specific).
+	defaultRemarkableHost    = "192.168.0.147"
+	defaultRemarkableSSHPort = "22"
+	defaultRemarkableUser    = "root"
 )
 
 func mustEnv(key string) string {
@@ -210,6 +243,21 @@ func loadConfig() Config {
 		smtpPort = defaultSMTPPort
 	}
 
+	remarkableHost := os.Getenv("REMARKABLE_HOST")
+	if remarkableHost == "" {
+		remarkableHost = defaultRemarkableHost
+	}
+
+	remarkableSSHPort := os.Getenv("REMARKABLE_SSH_PORT")
+	if remarkableSSHPort == "" {
+		remarkableSSHPort = defaultRemarkableSSHPort
+	}
+
+	remarkableUser := os.Getenv("REMARKABLE_USER")
+	if remarkableUser == "" {
+		remarkableUser = defaultRemarkableUser
+	}
+
 	return Config{
 		AuthToken:          mustEnv("AUTH_TOKEN"),
 		AuthTokenIssuedAt:  issuedAt,
@@ -224,6 +272,10 @@ func loadConfig() Config {
 		EmailPass:          os.Getenv("EMAIL_PASS"),
 		SMTPHost:           smtpHost,
 		SMTPPort:           smtpPort,
+		RemarkableHost:     remarkableHost,
+		RemarkableSSHPort:  remarkableSSHPort,
+		RemarkableUser:     remarkableUser,
+		RemarkablePassword: os.Getenv("REMARKABLE_PASSWORD"),
 	}
 }
 
