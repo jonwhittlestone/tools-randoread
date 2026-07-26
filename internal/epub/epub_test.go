@@ -151,6 +151,28 @@ func TestBuildEmbedsResolvedImage(t *testing.T) {
 	}
 }
 
+func TestBuildStripsQueryStringFromEmbeddedImageFilename(t *testing.T) {
+	// Real Clippings images come from URLs like
+	// "https://images.aeonmedia.co/photo.jpg?width=3840&quality=75" — the
+	// internal EPUB filename shouldn't carry that query string along
+	// (ugly, and "?"/"&" in a zip entry name is asking for trouble with
+	// some tools even where it technically works).
+	fetch := func(ref string) ([]byte, string, bool) {
+		return []byte{0xFF, 0xD8}, "image/jpeg", true
+	}
+
+	data, err := Build("t", []byte("![x](https://example.com/path/photo.jpg?width=3840&quality=75)"), SizeL, fetch)
+	if err != nil {
+		t.Fatalf("Build() error: %v", err)
+	}
+
+	for _, n := range zipNames(t, data) {
+		if strings.HasPrefix(n, "EPUB/images/") && strings.ContainsAny(n, "?&") {
+			t.Errorf("embedded image filename still contains the query string: %q", n)
+		}
+	}
+}
+
 func TestBuildUnresolvedImageDoesNotError(t *testing.T) {
 	// Mirrors markdown.Render's existing placeholder behavior for
 	// unresolved embeds — Build shouldn't fail the whole conversion over

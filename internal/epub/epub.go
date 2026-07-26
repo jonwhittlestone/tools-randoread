@@ -68,7 +68,13 @@ func Build(title string, source []byte, size Size, fetchImage ImageFetcher) ([]b
 		return nil, fmt.Errorf("add css: %w", err)
 	}
 
-	html := markdown.Render(source, imageResolver(e, fetchImage))
+	// RenderXHTML, not Render: EPUB sections must be well-formed XML, and a
+	// bare HTML5 void element (e.g. "<img ...>" with no self-closing slash)
+	// makes some readers' XML parsers — confirmed: the reMarkable's own EPUB
+	// renderer — stop dead and silently drop everything after it. Bit us for
+	// real: a Clipping with an <img> partway through got truncated right
+	// there on delivery.
+	html := markdown.RenderXHTML(source, imageResolver(e, fetchImage))
 
 	if _, err := e.AddSection(html, title, "", cssPath); err != nil {
 		return nil, fmt.Errorf("add section: %w", err)
@@ -101,7 +107,7 @@ func imageResolver(e *goepub.Epub, fetchImage ImageFetcher) markdown.ImageResolv
 		}
 
 		dataURL := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
-		internalPath, err := e.AddImage(dataURL, filepath.Base(ref))
+		internalPath, err := e.AddImage(dataURL, imageFilename(ref))
 		if err != nil {
 			return "", false
 		}
@@ -109,4 +115,19 @@ func imageResolver(e *goepub.Epub, fetchImage ImageFetcher) markdown.ImageResolv
 		added[ref] = internalPath
 		return internalPath, true
 	}
+}
+
+// imageFilename derives the internal EPUB filename to store a fetched
+// image under. ref is often a full URL (real Clippings images are almost
+// always absolute, scraped from the source website) — using its query
+// string verbatim would produce an internal filename like
+// "photo.jpg?width=3840&quality=75", which works but is needlessly ugly
+// and fragile for a zip entry name. Falls back to a plain filesystem
+// basename for non-URL refs (vault-relative filenames never have a query
+// string to begin with).
+func imageFilename(ref string) string {
+	if u, err := url.Parse(ref); err == nil && u.Path != "" {
+		return filepath.Base(u.Path)
+	}
+	return filepath.Base(ref)
 }

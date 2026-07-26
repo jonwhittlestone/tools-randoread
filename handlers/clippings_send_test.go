@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -171,5 +172,57 @@ func TestHandleClippingsSendEmbedsResolvedImage(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected the referenced image to be embedded in the delivered epub")
+	}
+}
+
+func TestHandleClippingsSendEmbedsAbsoluteURLImage(t *testing.T) {
+	// Regression: real Clippings articles reference images by absolute
+	// remote URL (scraped from the source website), e.g.
+	// "![alt](https://images.aeonmedia.co/photo.jpg?width=3840&quality=75)".
+	// This is exactly the shape that truncated a real delivered EPUB — see
+	// internal/epub's own regression test for the XML-well-formedness half
+	// of that bug. This test covers the other half: the image must actually
+	// be fetched over HTTP and embedded, not left as a dead remote link the
+	// offline tablet can never load.
+	fakeImage := []byte{0xFF, 0xD8, 0xFF, 0xE0}
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Write(fakeImage) //nolint:errcheck
+	}))
+	defer imageServer.Close()
+
+	markdown := fmt.Sprintf("![a photo](%s/photo.jpg?width=3840&quality=75)", imageServer.URL)
+	downloader := &fakeDownloader{files: map[string][]byte{
+		"/DropsyncFiles/jw-mind/Clippings/a.md": []byte(markdown),
+	}}
+	sender := &fakeSender{}
+	h := NewClippingsSendHandler(downloader, &fakeLister{}, "/DropsyncFiles/jw-mind", sender.send)
+
+	body, _ := json.Marshal(map[string]string{ //nolint:errcheck
+		"path": "/DropsyncFiles/jw-mind/Clippings/a.md", "title": "t",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/clippings/send-to-remarkable", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if len(sender.epubBytes) == 0 {
+		t.Fatal("expected SendEpub to be called with a readable, non-empty epub file")
+	}
+	r, err := zip.NewReader(bytes.NewReader(sender.epubBytes), int64(len(sender.epubBytes)))
+	if err != nil {
+		t.Fatalf("delivered file is not a valid epub/zip: %v", err)
+	}
+	found := false
+	for _, f := range r.File {
+		if strings.HasPrefix(f.Name, "EPUB/images/") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected the absolute-URL image to be fetched and embedded in the delivered epub")
 	}
 }

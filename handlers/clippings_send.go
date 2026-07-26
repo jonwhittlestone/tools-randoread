@@ -3,8 +3,11 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/jonwhittlestone/tools-randoread/internal/epub"
 	"github.com/jonwhittlestone/tools-randoread/internal/remarkable"
@@ -75,14 +78,26 @@ func (h *ClippingsSendHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]string{"status": "sent"}) //nolint:errcheck
 }
 
-// fetchImage adapts the vault's path resolver + downloader into
-// epub.ImageFetcher, so referenced images end up embedded in the epub
-// itself rather than left as randoread's auth-gated /api/asset URLs (which
-// the tablet, reading fully offline, has no way to fetch).
+// remoteImageClient fetches absolute-URL images referenced by Clippings
+// articles (see fetchImage) — bounded timeout since this runs synchronously
+// within the HTTP handler.
+var remoteImageClient = &http.Client{Timeout: 15 * time.Second}
+
+// fetchImage adapts the vault's path resolver + downloader (plus, for
+// absolute URLs, a plain HTTP fetch) into epub.ImageFetcher, so referenced
+// images end up embedded in the epub itself rather than left as dead
+// references the offline tablet can never load. Real Clippings articles
+// almost always reference images by absolute URL — scraped from the source
+// website — not a vault-relative path, so the HTTP case is the common one
+// in practice, not an edge case.
 func (h *ClippingsSendHandler) fetchImage() epub.ImageFetcher {
 	resolvePath := vaultPathResolver(h.Lister, h.VaultRoot)
 
 	return func(ref string) ([]byte, string, bool) {
+		if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+			return fetchRemoteImage(ref)
+		}
+
 		path, ok := resolvePath(ref)
 		if !ok {
 			return nil, "", false
@@ -93,6 +108,29 @@ func (h *ClippingsSendHandler) fetchImage() epub.ImageFetcher {
 		}
 		return data, contentTypeFor(path), true
 	}
+}
+
+func fetchRemoteImage(url string) ([]byte, string, bool) {
+	resp, err := remoteImageClient.Get(url)
+	if err != nil {
+		return nil, "", false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", false
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", false
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = contentTypeFor(url)
+	}
+	return data, contentType, true
 }
 
 // writeTempEpub writes data to a temp file and returns its path plus a
