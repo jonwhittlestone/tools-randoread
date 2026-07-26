@@ -43,8 +43,26 @@
     window.history.replaceState(null, "", "#" + mode);
   }
 
+  // Clipped/Rando Clipped titles read "Clippings / {article}" (see
+  // internal/note.FormatVaultTitle). The "Clippings" segment becomes a link
+  // to the full clippings list+Send-to-RM2 table; everything after it stays
+  // plain text, unchanged, so it still reads as a breadcrumb back to the
+  // article you came from.
+  const CLIPPINGS_BREADCRUMB_PREFIX = "Clippings / ";
+
+  function renderTitle(title) {
+    noteTitle.innerHTML = "";
+    if (!title.startsWith(CLIPPINGS_BREADCRUMB_PREFIX)) {
+      noteTitle.textContent = title;
+      return;
+    }
+
+    noteTitle.appendChild(clippingsBreadcrumbLink());
+    noteTitle.appendChild(document.createTextNode(" / " + title.slice(CLIPPINGS_BREADCRUMB_PREFIX.length)));
+  }
+
   function renderNote(data) {
-    noteTitle.textContent = data.title;
+    renderTitle(data.title);
     noteContent.innerHTML = data.html;
     currentNote = { path: data.path, title: data.title };
   }
@@ -176,6 +194,143 @@
   const randoClipped = makeFeature(randoClippedButton, "api/rando-clipped", "Rando Clipped", "rando-clipped");
   const clipped = makeFeature(clippedButton, "api/clipped", "Most Recently Clipped", "clipped");
 
+  // Animates el's text through a growing/repeating "." ".." "..." "...."
+  // "....." sequence — used on the Clippings breadcrumb link while its
+  // table refetches, per Jon. Returns a stop() that restores the label.
+  function animateEllipsis(el, restoreLabel) {
+    const frames = [".", "..", "...", "....", "....."];
+    let i = 0;
+    el.textContent = frames[0];
+    const interval = setInterval(() => {
+      i = (i + 1) % frames.length;
+      el.textContent = frames[i];
+    }, 300);
+    return () => {
+      clearInterval(interval);
+      el.textContent = restoreLabel;
+    };
+  }
+
+  function renderClippingsTable(clippings) {
+    noteContent.innerHTML = "";
+
+    if (!clippings || clippings.length === 0) {
+      noteContent.textContent = "No clippings in the last 3 months.";
+      return;
+    }
+
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    thead.innerHTML = "<tr><th>Clipped At</th><th>Title</th><th>Action</th></tr>";
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const c of clippings) {
+      const tr = document.createElement("tr");
+
+      const tdDate = document.createElement("td");
+      tdDate.textContent = c.clippedAt;
+
+      const tdTitle = document.createElement("td");
+      tdTitle.textContent = c.title;
+
+      const tdAction = document.createElement("td");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "send-to-rm2-button";
+      btn.textContent = "Send to RM2";
+      btn.dataset.path = c.path;
+      btn.dataset.title = c.title;
+      tdAction.appendChild(btn);
+
+      tr.append(tdDate, tdTitle, tdAction);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    noteContent.appendChild(table);
+  }
+
+  // Progress-feedback on the button itself (not a separate status line) —
+  // per Jon, the "Send to RM2" label should reflect activity/progress.
+  // Delegated (rather than bound per row) since the table is rebuilt
+  // wholesale on every Clippings refetch.
+  noteContent.addEventListener("click", async (event) => {
+    const btn = event.target.closest(".send-to-rm2-button");
+    if (!btn) return;
+
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+
+    let resultLabel;
+    try {
+      const res = await authedFetch("api/clippings/send-to-remarkable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: btn.dataset.path, title: btn.dataset.title }),
+      });
+      const data = await res.json();
+      resultLabel = res.ok ? "Sent ✓" : data.error || "Failed";
+    } catch (e) {
+      resultLabel = "Failed";
+    }
+
+    btn.textContent = resultLabel;
+    // Revert to the original label after a few seconds so the row is
+    // reusable again (e.g. resending after a transient failure), whether
+    // it succeeded or not.
+    setTimeout(() => {
+      if (!btn.isConnected) return; // table was rebuilt/replaced meanwhile
+      btn.textContent = originalLabel;
+      btn.disabled = false;
+    }, 3000);
+  });
+
+  function clippingsBreadcrumbLink() {
+    const link = document.createElement("a");
+    link.href = "#clippings-list";
+    link.id = "clippings-breadcrumb-link";
+    link.className = "breadcrumb-link";
+    link.textContent = "Clippings";
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      clippingsList.load();
+    });
+    return link;
+  }
+
+  // Every click refetches fresh from Dropbox (no cache), per Jon — the
+  // breadcrumb link animates a loading ellipsis meanwhile, then reverts to
+  // just "Clippings" (table loaded below it) or an error message. No
+  // trailing "/ {article}" here — we're viewing the index, not a specific
+  // clipping, so that context is dropped rather than left stale.
+  const clippingsList = {
+    async load() {
+      window.history.replaceState(null, "", "#clippings-list");
+
+      noteTitle.innerHTML = "";
+      const link = clippingsBreadcrumbLink();
+      noteTitle.appendChild(link);
+      const stopAnimation = animateEllipsis(link, "Clippings");
+
+      try {
+        const res = await authedFetch("api/clippings");
+        const data = await res.json();
+        stopAnimation();
+
+        if (!res.ok) {
+          noteContent.textContent = data.error || "Failed to load clippings.";
+          return;
+        }
+        renderClippingsTable(data.clippings);
+      } catch (e) {
+        stopAnimation();
+        noteContent.textContent = "Failed to load clippings.";
+      }
+    },
+  };
+
   function storedTokenIsValid() {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY);
     const expiresAt = localStorage.getItem(STORAGE_EXPIRES_KEY);
@@ -223,6 +378,8 @@
       randoClipped.load();
     } else if (hash === "clipped") {
       clipped.load();
+    } else if (hash === "clippings-list") {
+      clippingsList.load();
     } else {
       loadDaily();
     }

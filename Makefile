@@ -1,4 +1,4 @@
-.PHONY: run build test test-cover fmt lint clean docker-build docker-up docker-down deploy health auth daily rando clipped dropbox-status
+.PHONY: run build test test-cover fmt lint clean docker-build docker-up docker-down deploy health auth daily rando clipped dropbox-status build-send-to-remarkable send-to-remarkable
 
 BINARY=bin/randoread
 PORT?=8080
@@ -54,6 +54,17 @@ clipped:
 
 dropbox-status:
 	curl -s -H "X-Auth-Token: $(TOKEN)" "http://localhost:$(PORT)/api/dropbox/status" | jq .
+
+## ── send-to-remarkable CLI (not part of the web server) ────────────────────
+
+build-send-to-remarkable:
+	@mkdir -p bin
+	go build -o bin/send-to-remarkable ./cmd/send-to-remarkable
+	@echo "Binary written to bin/send-to-remarkable"
+
+# usage: make send-to-remarkable EPUB=path/to/book.epub REMARKABLE_PASSWORD=...
+send-to-remarkable: build-send-to-remarkable
+	REMARKABLE_PASSWORD=$(REMARKABLE_PASSWORD) ./bin/send-to-remarkable $(EPUB)
 
 ## ── Docker ─────────────────────────────────────────────────────────────────
 

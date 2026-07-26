@@ -27,6 +27,21 @@ GitHub-like dark theme.
   from the vault's `Clippings/` folder, any time (shares Rando's listing
   cache and file filters). Rendered with a "Date Clipped: yyyy-mm-dd hh:mm"
   heading (Europe/London time) showing when it was last modified.
+- **Clippings list + Send to RM2** — the "Clippings" segment of the
+  `Clippings / {article}` breadcrumb (shown above Clipped/Rando Clipped
+  notes) is a link to a table of every clipping from the last 3 months,
+  newest first (`GET /api/clippings`). Always refetches fresh from Dropbox
+  on click — deliberately *not* using the 24h vault-list cache Rando/Clipped
+  share — showing an animated `.`/`..`/`...` loading state on the breadcrumb
+  link while it loads. Each row has a **Send to RM2** button
+  (`POST /api/clippings/send-to-remarkable`) that converts that clipping's
+  markdown to a self-contained EPUB (images embedded, not left as remote
+  URLs — see `internal/epub`) at a comfortable, generous default text size,
+  and delivers it straight to the reMarkable tablet over SFTP, registered in
+  My Files as **✂️ RANDOREAD CLIP: {title}** (see `internal/remarkable`, and
+  `main-remarkable.md` in the `26-remarkable-tablet` vault project for how
+  tablet delivery works). The button's label reflects progress
+  ("Sending…" → "Sent ✓" / an error message).
 - **Email this note** (burger menu, ☰) — emails the currently displayed note
   as an HTML-embedded message to `jon@howapped.com` (configurable), images
   included.
@@ -84,6 +99,27 @@ vault, same app key) — only a redirect URI needs to be added once in the
 [Dropbox App Console](https://www.dropbox.com/developers/apps):
 `https://howapped.zapto.org/randoread/api/dropbox/callback`.
 
+## Send to reMarkable (CLI)
+
+`cmd/send-to-remarkable` is a standalone terminal tool (not wired into the
+web UI) that uploads an EPUB to a reMarkable tablet over SFTP and registers
+it in xochitl's document store, so it shows up properly in **My Files**
+(with title/author/cover — xochitl paginates it on import) rather than
+sitting invisibly in the tablet's `/home/root/`.
+
+Requires SSH over WLAN already enabled on the tablet (one-time setup over
+USB — see `main-remarkable.md` in the `26-remarkable-tablet` vault project
+for the step-by-step guide and how this document-store schema was reverse
+engineered from a live device).
+
+```bash
+go build -o bin/send-to-remarkable ./cmd/send-to-remarkable
+REMARKABLE_PASSWORD=<tablet root password> ./bin/send-to-remarkable path/to/book.epub
+
+# optional flags: -host (default 192.168.0.147), -port (22), -user (root),
+# -title (default: filename without extension)
+```
+
 ## Local development
 
 Requires Go 1.22+.
@@ -104,18 +140,28 @@ doylestonex during deploy.
 ```
 main.go                — mux wiring, go:embed static/, env config
 handlers/               — one file per HTTP concern (auth, daily, rando,
-                          clipped, asset, email, dropbox connect)
+                          clipped, clippings list + send-to-remarkable,
+                          asset, email, dropbox connect)
 internal/dropbox/       — Dropbox HTTP API client (OAuth2+PKCE, download,
                           list_folder), no third-party SDK
 internal/markdown/      — goldmark-based renderer + Obsidian preprocessing
 internal/note/          — vault path/title formatting
 internal/state/         — Rando's "note of the day" pin (JSON file)
 internal/mail/          — SMTP sending
+internal/epub/          — markdown-to-EPUB conversion (size presets,
+                          embedded images) for Clippings' Send to RM2
+internal/remarkable/    — SFTP upload + xochitl document-store registration,
+                          shared by Send to RM2 and the CLI below
+cmd/send-to-remarkable/ — standalone CLI, not part of the web server
 static/                 — vanilla JS/CSS single-page app, no build step
 ```
 
-Single third-party Go dependency: `goldmark` (pure Go, no CGO). Everything
-else is stdlib.
+Third-party Go dependencies: `goldmark` (markdown rendering, pure Go);
+`golang.org/x/crypto/ssh` + `github.com/pkg/sftp` (Send to RM2 + the CLI —
+pinned to versions requiring Go 1.15+ so they don't force a bump of this
+repo's `go 1.22.2` toolchain pin, which the Dockerfile/CI also pin to);
+`github.com/bmaupin/go-epub` (EPUB generation for Send to RM2, also pinned
+clear of any toolchain bump). Everything else is stdlib.
 
 ## Deploying
 
@@ -142,3 +188,6 @@ See `.env.example`. Notable ones:
   `EMAIL_FROM` — outbound mail settings (Gmail app password by default).
 - `DATA_DIR` — where the Dropbox token file persists (mounted volume in
   production).
+- `REMARKABLE_HOST` / `REMARKABLE_SSH_PORT` / `REMARKABLE_USER` /
+  `REMARKABLE_PASSWORD` — tablet SSH/SFTP connection for Clippings' Send to
+  RM2 (see "Send to reMarkable (CLI)" above; same tablet, same credentials).
