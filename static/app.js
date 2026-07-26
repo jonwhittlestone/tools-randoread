@@ -57,16 +57,7 @@
       return;
     }
 
-    const link = document.createElement("a");
-    link.href = "#clippings-list";
-    link.id = "clippings-breadcrumb-link";
-    link.className = "breadcrumb-link";
-    link.textContent = "Clippings";
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      clippingsList.load();
-    });
-    noteTitle.appendChild(link);
+    noteTitle.appendChild(clippingsBreadcrumbLink());
     noteTitle.appendChild(document.createTextNode(" / " + title.slice(CLIPPINGS_BREADCRUMB_PREFIX.length)));
   }
 
@@ -296,20 +287,37 @@
     }, 3000);
   });
 
+  function clippingsBreadcrumbLink() {
+    const link = document.createElement("a");
+    link.href = "#clippings-list";
+    link.id = "clippings-breadcrumb-link";
+    link.className = "breadcrumb-link";
+    link.textContent = "Clippings";
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      clippingsList.load();
+    });
+    return link;
+  }
+
   // Every click refetches fresh from Dropbox (no cache), per Jon — the
-  // breadcrumb link animates a loading ellipsis meanwhile, then either
-  // reverts to "Clippings" (table loaded below it) or an error message.
+  // breadcrumb link animates a loading ellipsis meanwhile, then reverts to
+  // just "Clippings" (table loaded below it) or an error message. No
+  // trailing "/ {article}" here — we're viewing the index, not a specific
+  // clipping, so that context is dropped rather than left stale.
   const clippingsList = {
     async load() {
       window.history.replaceState(null, "", "#clippings-list");
 
-      const link = document.getElementById("clippings-breadcrumb-link");
-      const stopAnimation = link ? animateEllipsis(link, "Clippings") : null;
+      noteTitle.innerHTML = "";
+      const link = clippingsBreadcrumbLink();
+      noteTitle.appendChild(link);
+      const stopAnimation = animateEllipsis(link, "Clippings");
 
       try {
         const res = await authedFetch("api/clippings");
         const data = await res.json();
-        if (stopAnimation) stopAnimation();
+        stopAnimation();
 
         if (!res.ok) {
           noteContent.textContent = data.error || "Failed to load clippings.";
@@ -317,7 +325,7 @@
         }
         renderClippingsTable(data.clippings);
       } catch (e) {
-        if (stopAnimation) stopAnimation();
+        stopAnimation();
         noteContent.textContent = "Failed to load clippings.";
       }
     },
