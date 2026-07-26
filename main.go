@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"io/fs"
 	"log"
 	"net/http"
@@ -63,6 +64,13 @@ type Config struct {
 	RemarkableSSHPort  string
 	RemarkableUser     string
 	RemarkablePassword string
+
+	// CommitHash identifies which commit is actually running — surfaced on
+	// /health so a deploy can be confirmed live (see deploy/deploy.sh,
+	// which computes it from the local checkout being deployed and passes
+	// it as the COMMIT_HASH env var). Empty for local dev (`go run .`),
+	// which omits the field from /health rather than showing "".
+	CommitHash string
 }
 
 // newMux wires up all routes and wraps them in the token-auth middleware.
@@ -72,8 +80,12 @@ func newMux(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := json.Marshal(struct { //nolint:errcheck
+			Status string `json:"status"`
+			Commit string `json:"commit,omitempty"`
+		}{Status: "ok", Commit: cfg.CommitHash})
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`)) //nolint:errcheck
+		w.Write(body) //nolint:errcheck
 	})
 
 	auth := handlers.NewAuth(cfg.AuthToken, cfg.AuthTokenIssuedAt, nil)
@@ -276,6 +288,7 @@ func loadConfig() Config {
 		RemarkableSSHPort:  remarkableSSHPort,
 		RemarkableUser:     remarkableUser,
 		RemarkablePassword: os.Getenv("REMARKABLE_PASSWORD"),
+		CommitHash:         os.Getenv("COMMIT_HASH"),
 	}
 }
 

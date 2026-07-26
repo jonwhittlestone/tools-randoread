@@ -14,6 +14,7 @@ services:
       - EMAIL_PASS=${EMAIL_PASS}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT}
+      - COMMIT_HASH=${COMMIT_HASH}
     volumes:
       - ./data:/app/data:Z
     restart: unless-stopped

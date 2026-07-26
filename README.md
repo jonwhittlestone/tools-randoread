@@ -172,6 +172,12 @@ make deploy   # rsyncs to doylestonex, builds+restarts via podman, updates Traef
 Requires SSH access to `doylestonex` (see `~/.ssh/config`) and a `.env` file
 already present at `/home/admin/www/tools-randoread/.env` on the host.
 
+`deploy/deploy.sh` computes `COMMIT_HASH` from the local checkout being
+deployed (appending `-dirty` if there are uncommitted changes) and passes it
+through so `GET /health` reports which commit is actually live —
+`{"status":"ok","commit":"b2b5173"}`. Not set for local dev (`go run .` /
+`make run`); the field is simply omitted then.
+
 ## Environment variables
 
 See `.env.example`. Notable ones:

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +37,34 @@ func TestHealthEndpoint(t *testing.T) {
 	want := `{"status":"ok"}`
 	if got != want {
 		t.Fatalf("expected body %q, got %q", want, got)
+	}
+}
+
+func TestHealthEndpointIncludesCommitHashWhenSet(t *testing.T) {
+	// CommitHash is set on every real deploy (see deploy/deploy.sh), so
+	// /health can be used to confirm which commit is actually live —
+	// unset (the zero value, as in every other test's testConfig) omits
+	// the field entirely rather than showing a misleading empty string.
+	cfg := testConfig(t)
+	cfg.CommitHash = "b2b5173"
+	mux := newMux(cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	var body struct {
+		Status string `json:"status"`
+		Commit string `json:"commit"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Errorf("status = %q, want %q", body.Status, "ok")
+	}
+	if body.Commit != "b2b5173" {
+		t.Errorf("commit = %q, want %q", body.Commit, "b2b5173")
 	}
 }
 
