@@ -18,6 +18,16 @@ REMOTE_HOST="doylestonex"
 REMOTE_DIR="/home/admin/www/tools-randoread"
 TRAEFIK_CONFIG_DIR="/home/admin/traefik/config/dynamic"
 
+# Computed from the local checkout being deployed (not the remote — .git
+# isn't rsynced over, see below) and passed through as an env var so
+# /health can report which commit is actually live. "-dirty" flags an
+# uncommitted-changes deploy so that's visible too, not silently hidden.
+COMMIT_HASH="$(git rev-parse --short HEAD)"
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  COMMIT_HASH="${COMMIT_HASH}-dirty"
+fi
+echo "==> Deploying commit $COMMIT_HASH"
+
 echo "==> Testing SSH connection"
 ssh "$REMOTE_HOST" "echo 'SSH OK'"
 
@@ -50,6 +60,7 @@ ssh "$REMOTE_HOST" "
     --network host \
     --env-file $REMOTE_DIR/.env \
     -e PORT=8085 \
+    -e COMMIT_HASH=$COMMIT_HASH \
     -v /home/admin/randoread-data:/app/data:Z \
     --restart unless-stopped \
     --health-cmd 'curl -sf http://localhost:8085/health' \
@@ -64,4 +75,4 @@ echo "==> Waiting for health check..."
 sleep 5
 ssh "$REMOTE_HOST" "curl -sf http://localhost:8085/health" && echo "  -> healthy" || echo "  -> health check FAILED"
 
-echo "==> Deploy complete. App available at https://howapped.zapto.org/randoread/health"
+echo "==> Deploy complete (commit $COMMIT_HASH). App available at https://howapped.zapto.org/randoread/health"
