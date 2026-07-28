@@ -44,6 +44,14 @@ func vaultFileResolver(lister NoteLister, vaultRoot, authToken string) markdown.
 	}
 }
 
+// invalidatingLister is implemented by *dropbox.CachedLister. A NoteLister
+// that doesn't implement it (e.g. a plain test fake) just means the
+// retry-on-miss below can't force a fresh reload — the initial lookup
+// result stands.
+type invalidatingLister interface {
+	Invalidate(path string, recursive bool)
+}
+
 // vaultPathResolver is the lazy-loaded, once-per-call vault listing lookup
 // vaultFileResolver builds its proxy URLs on top of, extracted so the
 // send-to-remarkable epub builder (internal/epub) can resolve an embed ref
@@ -74,9 +82,7 @@ func vaultPathResolver(lister NoteLister, vaultRoot string) func(ref string) (st
 		}
 	}
 
-	return func(ref string) (string, bool) {
-		once.Do(load)
-
+	lookup := func(ref string) (string, bool) {
 		if strings.Contains(ref, "/") {
 			fullPath := vaultRoot + "/" + ref
 			if byPath[fullPath] {
@@ -90,5 +96,26 @@ func vaultPathResolver(lister NoteLister, vaultRoot string) func(ref string) (st
 
 		path, ok := byName[ref]
 		return path, ok
+	}
+
+	return func(ref string) (string, bool) {
+		once.Do(load)
+
+		if path, ok := lookup(ref); ok {
+			return path, true
+		}
+
+		// A miss can mean the file genuinely isn't there, or that it was
+		// added/synced to Dropbox after our cached listing was built —
+		// that listing is reused for up to CachedLister's TTL (currently
+		// 24h), so a just-added embed (a reMarkable PDF, a freshly
+		// uploaded video) would otherwise sit "missing" for up to a day.
+		// Force one fresh reload and retry before giving up.
+		if inv, ok := lister.(invalidatingLister); ok {
+			inv.Invalidate(vaultRoot, true)
+			load()
+			return lookup(ref)
+		}
+		return "", false
 	}
 }

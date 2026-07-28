@@ -65,3 +65,15 @@ func (c *CachedLister) ListFolder(path string, recursive bool) ([]Entry, error) 
 
 	return entries, nil
 }
+
+// Invalidate drops the cached listing for (path, recursive), forcing the
+// next ListFolder call to hit Dropbox fresh rather than waiting out the
+// TTL. Used when a caller's lookup against the cached listing misses — the
+// underlying file may have synced to Dropbox after our last snapshot (see
+// handlers.vaultPathResolver's retry-on-miss).
+func (c *CachedLister) Invalidate(path string, recursive bool) {
+	key := fmt.Sprintf("%s|%v", path, recursive)
+	c.mu.Lock()
+	delete(c.cache, key)
+	c.mu.Unlock()
+}

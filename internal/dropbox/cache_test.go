@@ -77,6 +77,49 @@ func TestCachedListerCachesPerPathIndependently(t *testing.T) {
 	}
 }
 
+func TestCachedListerInvalidateForcesFreshReload(t *testing.T) {
+	fake := &fakeLister{entries: []Entry{{Path: "/a.md"}}}
+	c := NewCachedLister(fake, time.Hour)
+
+	if _, err := c.ListFolder("/vault", true); err != nil {
+		t.Fatalf("ListFolder: %v", err)
+	}
+	if _, err := c.ListFolder("/vault", true); err != nil {
+		t.Fatalf("ListFolder: %v", err)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("expected the second call to be served from cache, got %d underlying calls", fake.calls)
+	}
+
+	c.Invalidate("/vault", true)
+	if _, err := c.ListFolder("/vault", true); err != nil {
+		t.Fatalf("ListFolder: %v", err)
+	}
+	if fake.calls != 2 {
+		t.Fatalf("expected Invalidate to force a fresh reload well within the TTL, got %d underlying calls", fake.calls)
+	}
+}
+
+func TestCachedListerInvalidateOnlyAffectsThatKey(t *testing.T) {
+	fake := &fakeLister{entries: []Entry{{Path: "/a.md"}}}
+	c := NewCachedLister(fake, time.Hour)
+
+	if _, err := c.ListFolder("/vault", true); err != nil {
+		t.Fatalf("ListFolder: %v", err)
+	}
+	if _, err := c.ListFolder("/vault/Clippings", true); err != nil {
+		t.Fatalf("ListFolder: %v", err)
+	}
+
+	c.Invalidate("/vault", true)
+	if _, err := c.ListFolder("/vault/Clippings", true); err != nil {
+		t.Fatalf("ListFolder: %v", err)
+	}
+	if fake.calls != 2 {
+		t.Fatalf("expected the untouched /vault/Clippings key to stay cached, got %d underlying calls", fake.calls)
+	}
+}
+
 func TestCachedListerDoesNotCacheErrors(t *testing.T) {
 	fake := &fakeLister{err: errors.New("dropbox unavailable")}
 	c := NewCachedLister(fake, 10*time.Minute)
