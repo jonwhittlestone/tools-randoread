@@ -6,6 +6,8 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/jonwhittlestone/tools-randoread/internal/watchitlater"
 )
@@ -29,6 +31,11 @@ type WatchitlaterClient interface {
 // brokered server-side and never handed to the browser.
 type WatchingHandler struct {
 	Client WatchitlaterClient
+
+	// AuthToken is embedded as a query param in the video/poster URLs — see
+	// recordHTML. Set externally after construction, mirroring
+	// ClippedHandler/RandoHandler's AuthToken field.
+	AuthToken string
 }
 
 // NewWatchingHandler builds a WatchingHandler.
@@ -38,10 +45,16 @@ func NewWatchingHandler(client WatchitlaterClient) *WatchingHandler {
 
 // ServeHTTP serves GET /api/watching — mirrors ClippedHandler/RandoHandler's
 // {title, html, path} response shape so the existing frontend makeFeature
-// helper works unchanged. If nothing is staged yet (first-ever use), it
-// kicks off tools-watchitlater's next-video job and renders a "fetching"
-// state instead — the frontend then polls next/status the same way it does
-// after a "Get Next Video" click.
+// helper works unchanged.
+//
+// "Nothing currently staged" is ambiguous on its own — tools-watchitlater
+// clears the previous local files before it starts fetching a replacement,
+// so Current() reports staged:false for the whole duration of an in-flight
+// next-video job too, not just on first-ever use. Reloading the view during
+// that window must not call StartNext again (tools-watchitlater would 409 a
+// concurrent start, which would otherwise surface here as a spurious 502),
+// so NextStatus is checked first to tell "already fetching" and "nothing
+// left to categorize" apart from "truly never started."
 func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	record, err := h.Client.Current()
 	if err != nil {
@@ -50,14 +63,27 @@ func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body string
-	if !record.Staged {
-		if err := h.Client.StartNext(); err != nil {
-			writeJSONError(w, http.StatusBadGateway, "failed to start fetching a video")
+	switch {
+	case record.Staged:
+		body = recordHTML(record, h.AuthToken)
+	default:
+		status, err := h.Client.NextStatus()
+		if err != nil {
+			writeJSONError(w, http.StatusBadGateway, "failed to check watchitlater status")
 			return
 		}
-		body = fetchingHTML()
-	} else {
-		body = recordHTML(record)
+		switch {
+		case status.NoneLeft:
+			body = caughtUpHTML()
+		case status.Running:
+			body = fetchingHTML()
+		default:
+			if err := h.Client.StartNext(); err != nil {
+				writeJSONError(w, http.StatusBadGateway, "failed to start fetching a video")
+				return
+			}
+			body = fetchingHTML()
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -135,11 +161,19 @@ func (h *WatchingHandler) HandleThumbnail(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// fetchingHTML covers both first-ever use and reloading the view while a
+// next-video job is already in flight — either way there's nothing staged
+// to show yet, so the frontend just polls next/status until it's done.
 func fetchingHTML() string {
 	return `<div class="watching">` +
-		`<p>Fetching your first video…</p>` +
+		`<p>Fetching a video…</p>` +
 		`<div class="watching-progress"><div class="watching-progress-bar"></div><span class="watching-progress-label"></span></div>` +
 		`</div>`
+}
+
+// caughtUpHTML is shown once NextUncategorized has nothing left to offer.
+func caughtUpHTML() string {
+	return `<div class="watching"><p>You’re all caught up 🎉</p></div>`
 }
 
 // recordHTML renders the staged video: an embedded player (poster'd with
@@ -149,7 +183,7 @@ func fetchingHTML() string {
 // emoji-tag trigger, a progress-bar container (populated by app.js while a
 // next-video fetch runs), and the "Get Next Video →" button — disabled
 // until the video has been tagged.
-func recordHTML(r *watchitlater.Record) string {
+func recordHTML(r *watchitlater.Record, authToken string) string {
 	nextAttrs := ""
 	if r.Emoji == "" {
 		nextAttrs = " disabled"
@@ -158,6 +192,12 @@ func recordHTML(r *watchitlater.Record) string {
 	if r.Emoji != "" {
 		emojiLabel = html.EscapeString(r.Emoji)
 	}
+
+	// <video src>/poster can't send the X-Auth-Token header, so the token
+	// travels as a query param instead — same pattern vaultFileResolver
+	// already uses for /api/asset URLs (RequireToken accepts either).
+	videoURL := withToken(r.VideoURL, authToken)
+	thumbnailURL := withToken(r.ThumbnailURL, authToken)
 
 	return fmt.Sprintf(
 		`<div class="watching">`+
@@ -169,15 +209,25 @@ func recordHTML(r *watchitlater.Record) string {
 			`<dt>Uploaded</dt><dd>%s</dd>`+
 			`<dt>Playlist rank</dt><dd>%d</dd>`+
 			`</dl>`+
-			`<button type="button" class="watching-emoji-btn" data-video-id="%s">%s</button>`+
+			`<button type="button" class="watching-emoji-btn" data-video-id="%s" data-emoji="%s">%s</button>`+
 			`<div class="watching-progress hidden"><div class="watching-progress-bar"></div><span class="watching-progress-label"></span></div>`+
 			`<button type="button" class="watching-next-btn"%s data-video-id="%s">Get Next Video →</button>`+
 			`</div>`,
-		html.EscapeString(r.ThumbnailURL), html.EscapeString(r.VideoURL), html.EscapeString(r.VideoURL), html.EscapeString(r.Title),
+		html.EscapeString(thumbnailURL), html.EscapeString(videoURL), html.EscapeString(videoURL), html.EscapeString(r.Title),
 		html.EscapeString(r.Title),
 		html.EscapeString(r.YoutubeURL), html.EscapeString(r.YoutubeURL),
 		html.EscapeString(r.DownloadedAt), html.EscapeString(r.UploadedAt), r.PlaylistRank,
-		html.EscapeString(r.VideoID), emojiLabel,
+		html.EscapeString(r.VideoID), html.EscapeString(r.Emoji), emojiLabel,
 		nextAttrs, html.EscapeString(r.VideoID),
 	)
+}
+
+// withToken appends ?token=authToken to rawURL (which may already have its
+// own query string, though the watching URLs currently don't).
+func withToken(rawURL, authToken string) string {
+	sep := "?"
+	if strings.Contains(rawURL, "?") {
+		sep = "&"
+	}
+	return rawURL + sep + "token=" + url.QueryEscape(authToken)
 }

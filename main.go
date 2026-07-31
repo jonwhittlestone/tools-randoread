@@ -166,6 +166,7 @@ func newMux(cfg Config) http.Handler {
 
 	watchitlaterClient := watchitlater.NewClient(cfg.WatchitlaterBaseURL, cfg.WatchitlaterAuthToken)
 	watchingHandler := handlers.NewWatchingHandler(watchitlaterClient)
+	watchingHandler.AuthToken = cfg.AuthToken
 	mux.Handle("GET /api/watching", watchingHandler)
 	mux.HandleFunc("POST /api/watching/emoji", watchingHandler.HandleEmoji)
 	mux.HandleFunc("POST /api/watching/next", watchingHandler.HandleNext)

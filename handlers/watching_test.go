@@ -89,6 +89,31 @@ func TestWatchingServeHTTP_RendersStagedRecord(t *testing.T) {
 	}
 }
 
+func TestWatchingServeHTTP_EmbedsAuthTokenInVideoAndPosterURLs(t *testing.T) {
+	// <video src>/poster can't send the X-Auth-Token header, so the token
+	// must travel as a query param — same pattern as vaultFileResolver's
+	// /api/asset URLs (RequireToken accepts either; see handlers/auth.go).
+	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
+		Staged: true, VideoID: "vid1", Title: "Some Title",
+		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+	}}
+	h := NewWatchingHandler(f)
+	h.AuthToken = "secret-token"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body["html"], `src="api/watching/video?token=secret-token"`) {
+		t.Errorf("video src missing token: %s", body["html"])
+	}
+	if !strings.Contains(body["html"], `poster="api/watching/thumbnail?token=secret-token"`) {
+		t.Errorf("poster missing token: %s", body["html"])
+	}
+}
+
 func TestWatchingServeHTTP_EnablesNextButtonWhenCategorized(t *testing.T) {
 	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
 		Staged: true, VideoID: "vid1", Title: "Some Title", Emoji: "🎸",
@@ -108,7 +133,10 @@ func TestWatchingServeHTTP_EnablesNextButtonWhenCategorized(t *testing.T) {
 }
 
 func TestWatchingServeHTTP_BootstrapsFirstVideoWhenNothingStaged(t *testing.T) {
-	f := &fakeWatchitlaterClient{current: &watchitlater.Record{Staged: false}}
+	f := &fakeWatchitlaterClient{
+		current: &watchitlater.Record{Staged: false},
+		status:  &watchitlater.NextStatus{}, // nothing has ever run
+	}
 	h := NewWatchingHandler(f)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
@@ -120,6 +148,70 @@ func TestWatchingServeHTTP_BootstrapsFirstVideoWhenNothingStaged(t *testing.T) {
 	}
 	if !f.startNextCall {
 		t.Error("expected StartNext to be called to bootstrap the first video")
+	}
+}
+
+func TestWatchingServeHTTP_DoesNotRestartAnAlreadyRunningJob(t *testing.T) {
+	// While a next-video job is mid-download, Current() reports staged:false
+	// (the previous local file was already cleared) — reloading the view in
+	// that window must NOT call StartNext again, since tools-watchitlater
+	// would 409 a concurrent start and this handler would surface that as a
+	// spurious 502 instead of just showing the in-progress state.
+	f := &fakeWatchitlaterClient{
+		current: &watchitlater.Record{Staged: false},
+		status:  &watchitlater.NextStatus{Running: true, BytesTransferred: 50, TotalBytes: 100, Percent: 50},
+	}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if f.startNextCall {
+		t.Error("StartNext should not be called while a job is already running")
+	}
+}
+
+func TestWatchingServeHTTP_ShowsCaughtUpWhenNoneLeft(t *testing.T) {
+	f := &fakeWatchitlaterClient{
+		current: &watchitlater.Record{Staged: false},
+		status:  &watchitlater.NextStatus{NoneLeft: true, Done: true},
+	}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if f.startNextCall {
+		t.Error("StartNext should not be called when nothing is left to categorize")
+	}
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body["html"], "caught up") {
+		t.Errorf("expected a caught-up message, got: %s", body["html"])
+	}
+}
+
+func TestWatchingServeHTTP_NextStatusErrorReturns502(t *testing.T) {
+	f := &fakeWatchitlaterClient{
+		current:   &watchitlater.Record{Staged: false},
+		statusErr: errors.New("connection refused"),
+	}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
 	}
 }
 
