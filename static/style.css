@@ -284,3 +284,197 @@ a:hover {
   color: var(--text-muted);
   cursor: default;
 }
+
+/* ── Watching It Later (see handlers/watching.go's recordHTML/fetchingHTML
+   and app.js's startWatchingPoll) ──────────────────────────────────────── */
+
+.watching video {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.watching-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+}
+
+.watching-meta dt {
+  color: var(--text-muted);
+}
+
+.watching-meta dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.watching-emoji-btn {
+  background: var(--bg-secondary);
+  color: var(--h2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  margin-right: 12px;
+}
+
+.watching-next-btn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  background: var(--bg-secondary);
+  color: var(--h2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 1.05rem;
+  cursor: pointer;
+}
+
+.watching-next-btn:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.watching-progress {
+  margin-top: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+  height: 24px;
+}
+
+.watching-progress-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.watching-progress-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: var(--text-normal);
+}
+
+/* Emoji picker modal (see static/emoji-picker.js — copied from
+   tools-watchitlater, themed here with this app's fixed dark palette). */
+.emoji-picker-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.emoji-picker-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.emoji-picker-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 360px;
+  max-width: 90vw;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.emoji-picker-search {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 12px 12px 0 0;
+  color: var(--text-normal);
+  font-size: 16px;
+  font-family: inherit;
+  outline: none;
+}
+
+.emoji-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.emoji-picker-emoji {
+  width: 100%;
+  aspect-ratio: 1;
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s ease;
+}
+
+.emoji-picker-emoji:hover {
+  background: var(--bg-primary);
+}
+
+.emoji-picker-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+}
+
+.emoji-picker-btn {
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: none;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.emoji-picker-btn.cancel {
+  background: var(--bg-primary);
+  color: var(--text-normal);
+}
+
+.emoji-picker-btn.cancel:hover {
+  background: var(--border);
+}
+
+.emoji-picker-btn.ok {
+  background: var(--accent);
+  color: white;
+}
+
+.emoji-picker-btn.ok:hover {
+  background: var(--accent-hover);
+}
