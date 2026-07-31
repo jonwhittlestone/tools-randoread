@@ -10,6 +10,7 @@
   const randoButton = document.getElementById("rando-button");
   const randoClippedButton = document.getElementById("rando-clipped-button");
   const clippedButton = document.getElementById("clipped-button");
+  const watchingButton = document.getElementById("watching-button");
   const noteTitle = document.getElementById("note-title");
   const noteContent = document.getElementById("note-content");
   const menuButton = document.getElementById("menu-button");
@@ -30,6 +31,7 @@
     rando: randoButton,
     "rando-clipped": randoClippedButton,
     clipped: clippedButton,
+    watching: watchingButton,
   };
 
   // Marks which section is active (border highlight) and reflects it in the
@@ -166,7 +168,10 @@
 
   // Rando and Clipped share the same fetch/render pattern, just against
   // different endpoints and buttons. Clickable at any time — no cooldown.
-  function makeFeature(button, apiPath, label, mode) {
+  // onLoaded (optional) runs after a successful render — Watching It Later
+  // uses it to kick off progress polling when the response comes back in
+  // the "fetching a video" state (see loadWatching below).
+  function makeFeature(button, apiPath, label, mode, onLoaded) {
     async function load() {
       setActiveMode(mode);
       noteTitle.textContent = "Loading…";
@@ -180,6 +185,7 @@
           return;
         }
         renderNote(data);
+        if (onLoaded) onLoaded();
       } catch (e) {
         noteTitle.textContent = "";
         noteContent.textContent = "Failed to load " + label.toLowerCase() + ".";
@@ -193,6 +199,113 @@
   const rando = makeFeature(randoButton, "api/rando", "Rando", "rando");
   const randoClipped = makeFeature(randoClippedButton, "api/rando-clipped", "Rando Clipped", "rando-clipped");
   const clipped = makeFeature(clippedButton, "api/clipped", "Most Recently Clipped", "clipped");
+
+  // --- Watching It Later --------------------------------------------------
+
+  let watchingPollTimer = null;
+
+  function stopWatchingPoll() {
+    if (!watchingPollTimer) return;
+    clearInterval(watchingPollTimer);
+    watchingPollTimer = null;
+  }
+
+  function showWatchingProgress(percent, label) {
+    const bar = noteContent.querySelector(".watching-progress");
+    if (!bar) return;
+    bar.classList.remove("hidden");
+    bar.querySelector(".watching-progress-bar").style.width = percent + "%";
+    bar.querySelector(".watching-progress-label").textContent = label;
+  }
+
+  function startWatchingPoll() {
+    stopWatchingPoll();
+    watchingPollTimer = setInterval(async () => {
+      let data;
+      try {
+        const res = await authedFetch("api/watching/next/status");
+        data = await res.json();
+      } catch (e) {
+        return; // transient network error while polling — keep trying
+      }
+
+      if (data.error) {
+        stopWatchingPoll();
+        showWatchingProgress(0, "Error: " + data.error);
+        return;
+      }
+      if (data.noneLeft) {
+        stopWatchingPoll();
+        noteTitle.textContent = "";
+        noteContent.innerHTML = '<div class="watching"><p>You’re all caught up 🎉</p></div>';
+        return;
+      }
+      if (data.totalBytes) {
+        const pct = Math.round(data.percent);
+        showWatchingProgress(pct, pct + "%");
+      }
+      if (data.done) {
+        stopWatchingPoll();
+        watching.load();
+      }
+    }, 1000);
+  }
+
+  const watching = makeFeature(watchingButton, "api/watching", "Watching It Later", "watching", function () {
+    if (noteContent.querySelector(".watching-next-btn")) {
+      stopWatchingPoll();
+    } else {
+      showWatchingProgress(0, "Starting…");
+      startWatchingPoll();
+    }
+  });
+
+  noteContent.addEventListener("click", async (event) => {
+    const nextBtn = event.target.closest(".watching-next-btn");
+    if (nextBtn) {
+      if (nextBtn.disabled) return;
+      nextBtn.disabled = true;
+      try {
+        const res = await authedFetch("api/watching/next", { method: "POST" });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          window.alert("Failed to fetch the next video: " + (data.error || res.status));
+          nextBtn.disabled = false;
+          return;
+        }
+        showWatchingProgress(0, "Starting…");
+        startWatchingPoll();
+      } catch (e) {
+        window.alert("Failed to fetch the next video: " + e.message);
+        nextBtn.disabled = false;
+      }
+      return;
+    }
+
+    const emojiBtn = event.target.closest(".watching-emoji-btn");
+    if (!emojiBtn) return;
+
+    const videoID = emojiBtn.getAttribute("data-video-id");
+    const currentEmoji = emojiBtn.getAttribute("data-emoji") || "";
+    const result = await window.WatchItLaterEmojiPicker.show(currentEmoji);
+    if (result === null) return;
+
+    try {
+      const res = await authedFetch("api/watching/emoji", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoID: videoID, emoji: result }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        window.alert("Failed to set emoji: " + (data.error || res.status));
+        return;
+      }
+      watching.load();
+    } catch (e) {
+      window.alert("Failed to set emoji: " + e.message);
+    }
+  });
 
   // Animates el's text through a growing/repeating "." ".." "..." "...."
   // "....." sequence — used on the Clippings breadcrumb link while its
@@ -380,6 +493,8 @@
       clipped.load();
     } else if (hash === "clippings-list") {
       clippingsList.load();
+    } else if (hash === "watching") {
+      watching.load();
     } else {
       loadDaily();
     }

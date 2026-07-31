@@ -16,6 +16,7 @@ import (
 	"github.com/jonwhittlestone/tools-randoread/internal/mail"
 	"github.com/jonwhittlestone/tools-randoread/internal/remarkable"
 	"github.com/jonwhittlestone/tools-randoread/internal/state"
+	"github.com/jonwhittlestone/tools-randoread/internal/watchitlater"
 )
 
 //go:embed static
@@ -64,6 +65,14 @@ type Config struct {
 	RemarkableSSHPort  string
 	RemarkableUser     string
 	RemarkablePassword string
+
+	// WatchitlaterBaseURL/AuthToken connect to the tools-watchitlater
+	// instance backing the "Watching It Later 👀" feature — this app's
+	// backend calls it server-to-server (see internal/watchitlater), so the
+	// browser only ever sees this app's own token, never
+	// tools-watchitlater's.
+	WatchitlaterBaseURL   string
+	WatchitlaterAuthToken string
 
 	// CommitHash identifies which commit is actually running — surfaced on
 	// /health so a deploy can be confirmed live (see deploy/deploy.sh,
@@ -155,6 +164,16 @@ func newMux(cfg Config) http.Handler {
 	emailHandler := handlers.NewEmailHandler(dropboxClient, cfg.VaultRoot, cfg.PublicBaseURL, cfg.AuthToken, sendFunc)
 	mux.Handle("POST /api/email", emailHandler)
 
+	watchitlaterClient := watchitlater.NewClient(cfg.WatchitlaterBaseURL, cfg.WatchitlaterAuthToken)
+	watchingHandler := handlers.NewWatchingHandler(watchitlaterClient)
+	watchingHandler.AuthToken = cfg.AuthToken
+	mux.Handle("GET /api/watching", watchingHandler)
+	mux.HandleFunc("POST /api/watching/emoji", watchingHandler.HandleEmoji)
+	mux.HandleFunc("POST /api/watching/next", watchingHandler.HandleNext)
+	mux.HandleFunc("GET /api/watching/next/status", watchingHandler.HandleNextStatus)
+	mux.HandleFunc("GET /api/watching/video", watchingHandler.HandleVideo)
+	mux.HandleFunc("GET /api/watching/thumbnail", watchingHandler.HandleThumbnail)
+
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatal(err)
@@ -199,6 +218,8 @@ const (
 	defaultRemarkableHost    = "192.168.0.147"
 	defaultRemarkableSSHPort = "22"
 	defaultRemarkableUser    = "root"
+
+	defaultWatchitlaterBaseURL = "https://howapped.zapto.org/watchitlater/"
 )
 
 func mustEnv(key string) string {
@@ -270,25 +291,32 @@ func loadConfig() Config {
 		remarkableUser = defaultRemarkableUser
 	}
 
+	watchitlaterBaseURL := os.Getenv("WATCHITLATER_BASE_URL")
+	if watchitlaterBaseURL == "" {
+		watchitlaterBaseURL = defaultWatchitlaterBaseURL
+	}
+
 	return Config{
-		AuthToken:          mustEnv("AUTH_TOKEN"),
-		AuthTokenIssuedAt:  issuedAt,
-		DataDir:            dataDir,
-		DropboxAppKey:      os.Getenv("DROPBOX_APP_KEY"),
-		DropboxRedirectURI: os.Getenv("DROPBOX_REDIRECT_URI"),
-		VaultRoot:          vaultRoot,
-		PublicBaseURL:      publicBaseURL,
-		EmailFrom:          emailFrom,
-		EmailTo:            emailTo,
-		EmailUser:          emailUser,
-		EmailPass:          os.Getenv("EMAIL_PASS"),
-		SMTPHost:           smtpHost,
-		SMTPPort:           smtpPort,
-		RemarkableHost:     remarkableHost,
-		RemarkableSSHPort:  remarkableSSHPort,
-		RemarkableUser:     remarkableUser,
-		RemarkablePassword: os.Getenv("REMARKABLE_PASSWORD"),
-		CommitHash:         os.Getenv("COMMIT_HASH"),
+		AuthToken:             mustEnv("AUTH_TOKEN"),
+		AuthTokenIssuedAt:     issuedAt,
+		DataDir:               dataDir,
+		DropboxAppKey:         os.Getenv("DROPBOX_APP_KEY"),
+		DropboxRedirectURI:    os.Getenv("DROPBOX_REDIRECT_URI"),
+		VaultRoot:             vaultRoot,
+		PublicBaseURL:         publicBaseURL,
+		EmailFrom:             emailFrom,
+		EmailTo:               emailTo,
+		EmailUser:             emailUser,
+		EmailPass:             os.Getenv("EMAIL_PASS"),
+		SMTPHost:              smtpHost,
+		SMTPPort:              smtpPort,
+		RemarkableHost:        remarkableHost,
+		RemarkableSSHPort:     remarkableSSHPort,
+		RemarkableUser:        remarkableUser,
+		RemarkablePassword:    os.Getenv("REMARKABLE_PASSWORD"),
+		WatchitlaterBaseURL:   watchitlaterBaseURL,
+		WatchitlaterAuthToken: os.Getenv("WATCHITLATER_AUTH_TOKEN"),
+		CommitHash:            os.Getenv("COMMIT_HASH"),
 	}
 }
 
