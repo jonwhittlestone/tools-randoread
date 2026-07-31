@@ -14,6 +14,8 @@ services:
       - EMAIL_PASS=${EMAIL_PASS}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT}
+      - WATCHITLATER_BASE_URL=${WATCHITLATER_BASE_URL}
+      - WATCHITLATER_AUTH_TOKEN=${WATCHITLATER_AUTH_TOKEN}
       - COMMIT_HASH=${COMMIT_HASH}
     volumes:
       - ./data:/app/data:Z
