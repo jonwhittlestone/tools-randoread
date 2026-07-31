@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jonwhittlestone/tools-randoread/internal/watchitlater"
 )
@@ -129,6 +130,114 @@ func TestWatchingServeHTTP_EnablesNextButtonWhenCategorized(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
 	if strings.Contains(body["html"], `class="watching-next-btn" disabled`) {
 		t.Errorf("Get Next Video button should be enabled once categorized: %s", body["html"])
+	}
+}
+
+func TestWatchingServeHTTP_AutoAdvancesStaleTaggedVideo(t *testing.T) {
+	// The staged video was tagged (watched, categorised) in a previous
+	// daily-limit period — don't make the user click "Get Next Video" for
+	// something they've already dealt with; just continue automatically.
+	staleStagedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	f := &fakeWatchitlaterClient{
+		current: &watchitlater.Record{
+			Staged: true, VideoID: "vid1", Title: "Old Video", Emoji: "✅",
+			VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+			StagedAt: staleStagedAt,
+		},
+		status: &watchitlater.NextStatus{},
+	}
+	h := NewWatchingHandler(f)
+	h.Now = func() time.Time { return time.Date(2026, 7, 5, 18, 0, 0, 0, randoLocation) }
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !f.startNextCall {
+		t.Error("expected StartNext to be called for a stale, tagged video")
+	}
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if strings.Contains(body["html"], "Old Video") {
+		t.Errorf("expected the fetching state, not the stale video's own page: %s", body["html"])
+	}
+}
+
+func TestWatchingServeHTTP_DoesNotAutoAdvanceFreshTaggedVideo(t *testing.T) {
+	// Same period as "now" — tagged today, quota may happen to still be
+	// available (e.g. the very first video ever), but it was NOT staged in
+	// a previous period, so this must not auto-advance.
+	freshStagedAt := time.Date(2026, 7, 5, 17, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
+		Staged: true, VideoID: "vid1", Title: "Fresh Video", Emoji: "✅",
+		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+		StagedAt: freshStagedAt,
+	}}
+	h := NewWatchingHandler(f)
+	h.Now = func() time.Time { return time.Date(2026, 7, 5, 18, 0, 0, 0, randoLocation) }
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if f.startNextCall {
+		t.Error("expected no auto-advance for a video staged in the current period")
+	}
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body["html"], "Fresh Video") {
+		t.Errorf("expected the video's own page, got: %s", body["html"])
+	}
+}
+
+func TestWatchingServeHTTP_DoesNotAutoAdvanceStaleUntaggedVideo(t *testing.T) {
+	// Per explicit instruction: even if 24h has elapsed, an uncategorised
+	// video must NOT auto-advance — the user has to tag it first.
+	staleStagedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
+		Staged: true, VideoID: "vid1", Title: "Untagged Old Video", Emoji: "",
+		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+		StagedAt: staleStagedAt,
+	}}
+	h := NewWatchingHandler(f)
+	h.Now = func() time.Time { return time.Date(2026, 7, 5, 18, 0, 0, 0, randoLocation) }
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if f.startNextCall {
+		t.Error("expected no auto-advance for an uncategorised video, however stale")
+	}
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body["html"], "Untagged Old Video") {
+		t.Errorf("expected the video's own page, got: %s", body["html"])
+	}
+	if !strings.Contains(body["html"], `class="watching-next-btn" disabled`) {
+		t.Errorf("expected the plain disabled arrow state, got: %s", body["html"])
+	}
+}
+
+func TestWatchingServeHTTP_StaleTaggedVideoRespectsAlreadyRunningJob(t *testing.T) {
+	staleStagedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	f := &fakeWatchitlaterClient{
+		current: &watchitlater.Record{
+			Staged: true, VideoID: "vid1", Title: "Old Video", Emoji: "✅",
+			VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+			StagedAt: staleStagedAt,
+		},
+		status: &watchitlater.NextStatus{Running: true},
+	}
+	h := NewWatchingHandler(f)
+	h.Now = func() time.Time { return time.Date(2026, 7, 5, 18, 0, 0, 0, randoLocation) }
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if f.startNextCall {
+		t.Error("expected no duplicate StartNext while a job is already running")
 	}
 }
 

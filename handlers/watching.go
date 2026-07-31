@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/jonwhittlestone/tools-randoread/internal/watchitlater"
 )
@@ -36,11 +37,34 @@ type WatchingHandler struct {
 	// recordHTML. Set externally after construction, mirroring
 	// ClippedHandler/RandoHandler's AuthToken field.
 	AuthToken string
+
+	// Now is overridable for tests; defaults to time.Now. Drives the
+	// stale-tagged-video auto-advance check (videoIsStaleAndTagged).
+	Now func() time.Time
 }
 
 // NewWatchingHandler builds a WatchingHandler.
 func NewWatchingHandler(client WatchitlaterClient) *WatchingHandler {
-	return &WatchingHandler{Client: client}
+	return &WatchingHandler{Client: client, Now: time.Now}
+}
+
+// videoIsStaleAndTagged reports whether r was staged in a daily-limit
+// period before the current one (see handlers/period.go — the same
+// Europe/London, 4pm-reset boundary Rando already uses) and has been
+// tagged. Both conditions matter: a stale-but-untagged video must stay put
+// (the user still has to categorise it — see 03.05), and a
+// freshly-staged-but-tagged video (e.g. the very first video ever, where
+// the daily limit happens to still be available) must not be whisked away
+// on the next reload just because DailyLimitReached happens to read false.
+func (h *WatchingHandler) videoIsStaleAndTagged(r *watchitlater.Record) bool {
+	if r.Emoji == "" || r.StagedAt == "" {
+		return false
+	}
+	stagedAt, err := time.Parse(time.RFC3339, r.StagedAt)
+	if err != nil {
+		return false
+	}
+	return !currentPeriodStart(stagedAt).Equal(currentPeriodStart(h.Now()))
 }
 
 // ServeHTTP serves GET /api/watching — mirrors ClippedHandler/RandoHandler's
@@ -64,9 +88,14 @@ func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var body string
 	switch {
-	case record.Staged:
+	case record.Staged && !h.videoIsStaleAndTagged(record):
 		body = recordHTML(record, h.AuthToken)
 	default:
+		// Either nothing is staged (first-ever use, or mid-fetch — see the
+		// comment above), or what's staged is a stale, already-tagged
+		// video from a previous daily-limit period: advance automatically
+		// instead of making the user click "Get Next Video" for a video
+		// they've already dealt with.
 		status, err := h.Client.NextStatus()
 		if err != nil {
 			writeJSONError(w, http.StatusBadGateway, "failed to check watchitlater status")

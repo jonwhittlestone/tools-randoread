@@ -50,6 +50,12 @@ type Record struct {
 	// used today (Europe/London, 4pm reset) — see tools-watchitlater's
 	// handlers/period.go for the period boundary this mirrors.
 	DailyLimitReached bool `json:"dailyLimitReached"`
+	// StagedAt (RFC3339) is when this video was staged — lets a caller
+	// tell "staged just now" apart from "has been sitting here since a
+	// previous day," which DailyLimitReached alone can't (it flips false
+	// the moment the period rolls over, whether or not this video is
+	// actually stale).
+	StagedAt string `json:"stagedAt"`
 }
 
 // NextStatus mirrors tools-watchitlater's GET /api/watching/next/status response.
