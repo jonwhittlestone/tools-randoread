@@ -12,6 +12,7 @@
   const clippedButton = document.getElementById("clipped-button");
   const watchingButton = document.getElementById("watching-button");
   const noteTitle = document.getElementById("note-title");
+  const noteTitleRight = document.getElementById("note-title-right");
   const noteContent = document.getElementById("note-content");
   const menuButton = document.getElementById("menu-button");
   const menuPanel = document.getElementById("menu-panel");
@@ -43,6 +44,11 @@
       button.classList.toggle("active", key === mode);
     }
     window.history.replaceState(null, "", "#" + mode);
+    // Cleared on every section switch (rather than only in renderNote) so a
+    // stale "next fresh video" countdown from Watching It Later can't
+    // linger through another section's "Loading…"/error states, which set
+    // #note-title directly and never touch this sibling element.
+    noteTitleRight.textContent = "";
   }
 
   // Clipped/Rando Clipped titles read "Clippings / {article}" (see
@@ -65,6 +71,7 @@
 
   function renderNote(data) {
     renderTitle(data.title);
+    noteTitleRight.textContent = data.titleRight || "";
     noteContent.innerHTML = data.html;
     currentNote = { path: data.path, title: data.title };
   }

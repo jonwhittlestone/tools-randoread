@@ -56,6 +56,9 @@ type Record struct {
 	// the moment the period rolls over, whether or not this video is
 	// actually stale).
 	StagedAt string `json:"stagedAt"`
+	// NextFreshVideoAt (RFC3339) is when the daily limit next rolls over —
+	// see tools-watchitlater's handlers/period.go.
+	NextFreshVideoAt string `json:"nextFreshVideoAt"`
 }
 
 // NextStatus mirrors tools-watchitlater's GET /api/watching/next/status response.
