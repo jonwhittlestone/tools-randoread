@@ -132,6 +132,58 @@ func TestWatchingServeHTTP_EnablesNextButtonWhenCategorized(t *testing.T) {
 	}
 }
 
+func TestWatchingServeHTTP_DisablesNextWithClockLabelWhenDailyLimitReached(t *testing.T) {
+	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
+		Staged: true, VideoID: "vid1", Title: "Some Title", Emoji: "🎸",
+		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+		DailyLimitReached: true,
+	}}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body["html"], `class="watching-next-btn" disabled`) {
+		t.Errorf("Get Next Video should be disabled when the daily limit is reached: %s", body["html"])
+	}
+	if !strings.Contains(body["html"], "Get Next Video ⏰") {
+		t.Errorf("expected the clock label when the daily limit is reached: %s", body["html"])
+	}
+}
+
+func TestWatchingServeHTTP_UncategorizedTakesPrecedenceOverDailyLimitLabel(t *testing.T) {
+	// The realistic post-advance state: DailyLimitReached flips true the
+	// instant a Next call succeeds, but the freshly staged video is always
+	// uncategorized. The button must still read the plain arrow (and stay
+	// disabled for the "not tagged yet" reason), not the clock — the clock
+	// is specifically for "you tagged it, but you're out of quota today."
+	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
+		Staged: true, VideoID: "vid2", Title: "Fresh Video", Emoji: "",
+		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+		DailyLimitReached: true,
+	}}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body["html"], `class="watching-next-btn" disabled`) {
+		t.Errorf("expected disabled: %s", body["html"])
+	}
+	if !strings.Contains(body["html"], "Get Next Video →") {
+		t.Errorf("expected the plain arrow label (uncategorized takes precedence), got: %s", body["html"])
+	}
+	if strings.Contains(body["html"], "⏰") {
+		t.Errorf("did not expect the clock label while still uncategorized: %s", body["html"])
+	}
+}
+
 func TestWatchingServeHTTP_BootstrapsFirstVideoWhenNothingStaged(t *testing.T) {
 	f := &fakeWatchitlaterClient{
 		current: &watchitlater.Record{Staged: false},
