@@ -86,10 +86,11 @@ func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body string
+	var body, titleRight string
 	switch {
 	case record.Staged && !h.videoIsStaleAndTagged(record):
 		body = recordHTML(record, h.AuthToken)
+		titleRight = nextFreshVideoLabel(record)
 	default:
 		// Either nothing is staged (first-ever use, or mid-fetch — see the
 		// comment above), or what's staged is a stale, already-tagged
@@ -117,10 +118,28 @@ func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
-		"title": "Watching it Later 👀",
-		"html":  body,
-		"path":  "watching",
+		"title":      "Watching it Later 👀",
+		"html":       body,
+		"path":       "watching",
+		"titleRight": titleRight,
 	})
+}
+
+// nextFreshVideoLabel returns the right-justified "next fresh video"
+// countdown text — only when the daily limit is actually what's blocking
+// Get Next Video right now (tagged + reached, mirroring exactly when the
+// button shows its ⏰ label); "" otherwise, since there's no meaningful
+// wait to report if nothing's blocking progress or the block is just
+// "not tagged yet" (no scheduled time attached to that).
+func nextFreshVideoLabel(r *watchitlater.Record) string {
+	if r.Emoji == "" || !r.DailyLimitReached {
+		return ""
+	}
+	at, err := time.Parse(time.RFC3339, r.NextFreshVideoAt)
+	if err != nil {
+		return ""
+	}
+	return "Next fresh video ☕: " + at.Format("Mon 15:04 02.01.06")
 }
 
 // HandleEmoji serves POST /api/watching/emoji — proxies to

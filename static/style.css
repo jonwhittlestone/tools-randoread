@@ -154,11 +154,25 @@ a:hover {
   padding: 4px 8px;
 }
 
+.note-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
 #note-title {
   color: var(--text-muted);
   font-size: 0.95rem;
-  padding-bottom: 12px;
   word-break: break-word;
+}
+
+#note-title-right {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 /* "Clippings" breadcrumb segment — links to the clippings list+Send to RM2

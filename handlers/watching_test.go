@@ -263,6 +263,67 @@ func TestWatchingServeHTTP_DisablesNextWithClockLabelWhenDailyLimitReached(t *te
 	}
 }
 
+func TestWatchingServeHTTP_IncludesNextFreshVideoLabelWhenDailyLimitReached(t *testing.T) {
+	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
+		Staged: true, VideoID: "vid1", Title: "Some Title", Emoji: "🎸",
+		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+		DailyLimitReached: true,
+		NextFreshVideoAt:  time.Date(2026, 5, 15, 13, 0, 0, 0, randoLocation).Format(time.RFC3339),
+	}}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	want := "Next fresh video ☕: Fri 13:00 15.05.26"
+	if body["titleRight"] != want {
+		t.Errorf("titleRight = %q, want %q", body["titleRight"], want)
+	}
+}
+
+func TestWatchingServeHTTP_OmitsNextFreshVideoLabelWhenLimitAvailable(t *testing.T) {
+	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
+		Staged: true, VideoID: "vid1", Title: "Some Title", Emoji: "🎸",
+		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+		DailyLimitReached: false,
+		NextFreshVideoAt:  time.Date(2026, 5, 15, 13, 0, 0, 0, randoLocation).Format(time.RFC3339),
+	}}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if body["titleRight"] != "" {
+		t.Errorf("titleRight = %q, want empty (limit is available, no wait to show)", body["titleRight"])
+	}
+}
+
+func TestWatchingServeHTTP_OmitsNextFreshVideoLabelWhenUncategorized(t *testing.T) {
+	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
+		Staged: true, VideoID: "vid1", Title: "Some Title", Emoji: "",
+		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+		DailyLimitReached: true,
+		NextFreshVideoAt:  time.Date(2026, 5, 15, 13, 0, 0, 0, randoLocation).Format(time.RFC3339),
+	}}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if body["titleRight"] != "" {
+		t.Errorf("titleRight = %q, want empty (not yet tagged, no wait to show)", body["titleRight"])
+	}
+}
+
 func TestWatchingServeHTTP_UncategorizedTakesPrecedenceOverDailyLimitLabel(t *testing.T) {
 	// The realistic post-advance state: DailyLimitReached flips true the
 	// instant a Next call succeeds, but the freshly staged video is always
