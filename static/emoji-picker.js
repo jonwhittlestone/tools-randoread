@@ -140,6 +140,14 @@
     var actions = document.createElement("div");
     actions.className = "emoji-picker-actions";
 
+    var clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "emoji-picker-btn clear";
+    clearBtn.textContent = "Clear";
+    clearBtn.addEventListener("click", function () {
+      self.close("");
+    });
+
     var cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
     cancelBtn.className = "emoji-picker-btn cancel";
@@ -156,6 +164,7 @@
       self.close(self.getResult());
     });
 
+    actions.appendChild(clearBtn);
     actions.appendChild(cancelBtn);
     actions.appendChild(okBtn);
 

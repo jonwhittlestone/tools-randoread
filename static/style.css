@@ -470,6 +470,16 @@ a:hover {
   background: var(--border);
 }
 
+.emoji-picker-btn.clear {
+  background: var(--bg-primary);
+  color: var(--h5);
+  margin-right: auto;
+}
+
+.emoji-picker-btn.clear:hover {
+  background: var(--border);
+}
+
 .emoji-picker-btn.ok {
   background: var(--accent);
   color: white;
