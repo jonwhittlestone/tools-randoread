@@ -46,6 +46,10 @@ type Record struct {
 	Emoji        string `json:"emoji"`
 	VideoURL     string `json:"videoURL"`
 	ThumbnailURL string `json:"thumbnailURL"`
+	// DailyLimitReached is true once "Get Next Video" has already been
+	// used today (Europe/London, 4pm reset) — see tools-watchitlater's
+	// handlers/period.go for the period boundary this mirrors.
+	DailyLimitReached bool `json:"dailyLimitReached"`
 }
 
 // NextStatus mirrors tools-watchitlater's GET /api/watching/next/status response.

@@ -184,9 +184,18 @@ func caughtUpHTML() string {
 // next-video fetch runs), and the "Get Next Video →" button — disabled
 // until the video has been tagged.
 func recordHTML(r *watchitlater.Record, authToken string) string {
+	// Uncategorized takes precedence over the daily-limit label: the
+	// instant a Next call succeeds, DailyLimitReached flips true, but the
+	// freshly staged video is always uncategorized — the clock label is
+	// specifically for "tagged, but out of quota today," not that.
 	nextAttrs := ""
-	if r.Emoji == "" {
+	nextLabel := "Get Next Video →"
+	switch {
+	case r.Emoji == "":
 		nextAttrs = " disabled"
+	case r.DailyLimitReached:
+		nextAttrs = " disabled"
+		nextLabel = "Get Next Video ⏰"
 	}
 	emojiLabel := "+ Tag as watched"
 	if r.Emoji != "" {
@@ -211,14 +220,14 @@ func recordHTML(r *watchitlater.Record, authToken string) string {
 			`</dl>`+
 			`<button type="button" class="watching-emoji-btn" data-video-id="%s" data-emoji="%s">%s</button>`+
 			`<div class="watching-progress hidden"><div class="watching-progress-bar"></div><span class="watching-progress-label"></span></div>`+
-			`<button type="button" class="watching-next-btn"%s data-video-id="%s">Get Next Video →</button>`+
+			`<button type="button" class="watching-next-btn"%s data-video-id="%s">%s</button>`+
 			`</div>`,
 		html.EscapeString(thumbnailURL), html.EscapeString(videoURL), html.EscapeString(videoURL), html.EscapeString(r.Title),
 		html.EscapeString(r.Title),
 		html.EscapeString(r.YoutubeURL), html.EscapeString(r.YoutubeURL),
 		html.EscapeString(r.DownloadedAt), html.EscapeString(r.UploadedAt), r.PlaylistRank,
 		html.EscapeString(r.VideoID), html.EscapeString(r.Emoji), emojiLabel,
-		nextAttrs, html.EscapeString(r.VideoID),
+		nextAttrs, html.EscapeString(r.VideoID), nextLabel,
 	)
 }
 
