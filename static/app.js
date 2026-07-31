@@ -218,38 +218,49 @@
     bar.querySelector(".watching-progress-label").textContent = label;
   }
 
+  // Shared by the interval below and the visibilitychange listener further
+  // down — Chrome/Safari throttle setInterval heavily in backgrounded tabs
+  // (sometimes to once a minute or less), so a user who tabs away during a
+  // real ~30-90s download and comes back could otherwise be looking at a
+  // stale view until the next (delayed) tick happens to fire.
+  async function checkWatchingStatus() {
+    let data;
+    try {
+      const res = await authedFetch("api/watching/next/status");
+      data = await res.json();
+    } catch (e) {
+      return; // transient network error while polling — keep trying
+    }
+
+    if (data.error) {
+      stopWatchingPoll();
+      showWatchingProgress(0, "Error: " + data.error);
+      return;
+    }
+    if (data.noneLeft) {
+      stopWatchingPoll();
+      noteTitle.textContent = "";
+      noteContent.innerHTML = '<div class="watching"><p>You’re all caught up 🎉</p></div>';
+      return;
+    }
+    if (data.totalBytes) {
+      const pct = Math.round(data.percent);
+      showWatchingProgress(pct, pct + "%");
+    }
+    if (data.done) {
+      stopWatchingPoll();
+      watching.load();
+    }
+  }
+
   function startWatchingPoll() {
     stopWatchingPoll();
-    watchingPollTimer = setInterval(async () => {
-      let data;
-      try {
-        const res = await authedFetch("api/watching/next/status");
-        data = await res.json();
-      } catch (e) {
-        return; // transient network error while polling — keep trying
-      }
-
-      if (data.error) {
-        stopWatchingPoll();
-        showWatchingProgress(0, "Error: " + data.error);
-        return;
-      }
-      if (data.noneLeft) {
-        stopWatchingPoll();
-        noteTitle.textContent = "";
-        noteContent.innerHTML = '<div class="watching"><p>You’re all caught up 🎉</p></div>';
-        return;
-      }
-      if (data.totalBytes) {
-        const pct = Math.round(data.percent);
-        showWatchingProgress(pct, pct + "%");
-      }
-      if (data.done) {
-        stopWatchingPoll();
-        watching.load();
-      }
-    }, 1000);
+    watchingPollTimer = setInterval(checkWatchingStatus, 1000);
   }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && watchingPollTimer) checkWatchingStatus();
+  });
 
   const watching = makeFeature(watchingButton, "api/watching", "Watching It Later", "watching", function () {
     if (noteContent.querySelector(".watching-next-btn")) {
