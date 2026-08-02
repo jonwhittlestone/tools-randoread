@@ -115,6 +115,43 @@ func TestHandleClippedExcludesConflictedCopies(t *testing.T) {
 	}
 }
 
+func TestHandleClippedExcludesWatchLaterClips(t *testing.T) {
+	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	entries := []dropbox.Entry{
+		mdEntryModified("/DropsyncFiles/jw-mind/Clippings/randoread-watching-it-later/video.md", now),
+		mdEntryModified("/DropsyncFiles/jw-mind/Clippings/article.md", now.Add(-time.Hour)),
+	}
+	h, _ := newTestClippedHandler(t, entries, now)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/clipped", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body struct {
+		Title string `json:"title"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if body.Title != "Clippings / article" {
+		t.Errorf("expected the watch-later video to be skipped despite being newer, got title %q", body.Title)
+	}
+}
+
+func TestHandleClippedNoClippingsFoundWhenOnlyWatchLaterExists(t *testing.T) {
+	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	entries := []dropbox.Entry{
+		mdEntryModified("/DropsyncFiles/jw-mind/Clippings/randoread-watching-it-later/video.md", now),
+	}
+	h, _ := newTestClippedHandler(t, entries, now)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/clipped", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 when only watch-later clips exist, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleClippedImageURLIncludesAuthToken(t *testing.T) {
 	downloader := &fakeDownloader{files: map[string][]byte{
 		"/DropsyncFiles/jw-mind/Clippings/a.md": []byte("![[photo.jpg]]"),

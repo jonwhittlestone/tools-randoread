@@ -91,6 +91,15 @@ func isInTemplatesDir(path, vaultRoot string) bool {
 	return strings.HasPrefix(path, vaultRoot+"/templates/")
 }
 
+// watchLaterClippingsDir holds video links clipped for later viewing, not
+// articles — excluded from "Most Recently Clipped" (see handlers/clipped.go)
+// per Jon: that feed should stay reading material, not a watch queue.
+const watchLaterClippingsDir = "/randoread-watching-it-later/"
+
+func isWatchLaterClip(path string) bool {
+	return strings.Contains(path, watchLaterClippingsDir)
+}
+
 func candidateNotes(entries []dropbox.Entry, vaultRoot string) []dropbox.Entry {
 	var out []dropbox.Entry
 	for _, e := range entries {

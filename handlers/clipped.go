@@ -52,6 +52,20 @@ func (h *ClippedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	candidates := candidateNotes(entries, h.VaultRoot)
+
+	// "Most Recently Clipped" is meant to surface reading material — video
+	// links saved for later watching (see the randoread-watching-it-later
+	// bookmarklet folder) shouldn't compete for that slot. Rando Clipped
+	// (which samples the whole Clippings/ folder, watch-later included) is
+	// intentionally left as-is — this exclusion is specific to this handler.
+	filtered := candidates[:0]
+	for _, c := range candidates {
+		if !isWatchLaterClip(c.Path) {
+			filtered = append(filtered, c)
+		}
+	}
+	candidates = filtered
+
 	if len(candidates) == 0 {
 		writeJSONError(w, http.StatusBadGateway, "no clippings found")
 		return
