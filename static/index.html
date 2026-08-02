@@ -52,7 +52,14 @@
     </div>
   </section>
 
+  <!-- Single global vim cursor overlay — only one note editor (Watching It
+       Later's Notes panel) is ever shown at a time, so one shared element is
+       enough. See vim-mode.js / watching-notes.js. -->
+  <div id="vimCursor" class="vim-cursor" style="display: none"></div>
+
   <script src="emoji-picker.js"></script>
+  <script src="vim-mode.js"></script>
+  <script src="watching-notes.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

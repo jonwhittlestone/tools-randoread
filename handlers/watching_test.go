@@ -115,6 +115,27 @@ func TestWatchingServeHTTP_EmbedsAuthTokenInVideoAndPosterURLs(t *testing.T) {
 	}
 }
 
+func TestWatchingServeHTTP_IncludesCollapsedNotesContainer(t *testing.T) {
+	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
+		Staged: true, VideoID: "vid1", Title: "Some Title",
+		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+	}}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body["html"], `class="watching-notes-toggle"`) {
+		t.Errorf("html missing notes toggle: %s", body["html"])
+	}
+	if !strings.Contains(body["html"], `class="watching-notes-panel hidden"`) {
+		t.Errorf("expected notes panel to start hidden/collapsed: %s", body["html"])
+	}
+}
+
 func TestWatchingServeHTTP_EnablesNextButtonWhenCategorized(t *testing.T) {
 	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
 		Staged: true, VideoID: "vid1", Title: "Some Title", Emoji: "🎸",

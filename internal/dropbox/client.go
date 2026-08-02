@@ -136,6 +136,30 @@ func (c *Client) Download(path string) ([]byte, error) {
 	})
 }
 
+// Upload writes data to path (files/upload), overwriting any existing file —
+// used by the "Watching It Later" per-video notes feature to persist edits
+// back to the vault. autorename is deliberately false (an overwrite is
+// exactly what's wanted; a silently renamed file would orphan the note this
+// app is tracking) and mute is true (no need for a Dropbox notification on
+// every autosave).
+func (c *Client) Upload(path string, data []byte) error {
+	arg, err := json.Marshal(map[string]any{
+		"path":       path,
+		"mode":       "overwrite",
+		"autorename": false,
+		"mute":       true,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = c.authorizedRequest(http.MethodPost, c.ContentBaseURL+"/2/files/upload", bytes.NewReader(data), map[string]string{
+		"Dropbox-API-Arg": string(arg),
+		"Content-Type":    "application/octet-stream",
+	})
+	return err
+}
+
 type listFolderEntry struct {
 	Type           string `json:".tag"`
 	Name           string `json:"name"`
