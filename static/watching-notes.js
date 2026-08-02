@@ -45,7 +45,7 @@
     '<span class="watching-notes-save-status"></span>' +
     "</div>" +
     "</div>" +
-    '<div class="watching-notes-actions">' +
+    '<div class="watching-notes-actions hidden">' +
     '<button type="button" class="watching-notes-edit-btn">✏️ Edit</button>' +
     '<button type="button" class="watching-notes-done-btn hidden">Done</button>' +
     '<button type="button" class="watching-notes-link-btn">🔗 Linking to existing note</button>' +
@@ -60,6 +60,7 @@
       refs: panel.querySelector(".watching-notes-refs"),
       preview: panel.querySelector(".watching-notes-preview"),
       body: panel.querySelector(".watching-notes-body"),
+      actions: panel.querySelector(".watching-notes-actions"),
       editorWrap: panel.querySelector(".watching-notes-editor"),
       textarea: panel.querySelector(".watching-notes-textarea"),
       vimIndicator: panel.querySelector(".watching-notes-vim-indicator"),
@@ -112,6 +113,11 @@
     panel.dataset.raw = data.raw || "";
     els.body.innerHTML = data.html || "";
     renderReferences(panel, data.references);
+    // Edit/Link only make sense once we actually know the note's current
+    // content — showing them earlier let a fast click into Edit start from
+    // an empty textarea and autosave over the real content before the
+    // initial GET had even resolved (found live; see PR history).
+    els.actions.classList.remove("hidden");
   }
 
   function loadPanel(panel) {
