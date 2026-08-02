@@ -269,6 +269,7 @@ func recordHTML(r *watchitlater.Record, authToken string) string {
 			`<button type="button" class="watching-emoji-btn" data-video-id="%s" data-emoji="%s">%s</button>`+
 			`<div class="watching-progress hidden"><div class="watching-progress-bar"></div><span class="watching-progress-label"></span></div>`+
 			`<button type="button" class="watching-next-btn"%s data-video-id="%s">%s</button>`+
+			notesHTML+
 			`</div>`,
 		html.EscapeString(thumbnailURL), html.EscapeString(videoURL), html.EscapeString(videoURL), html.EscapeString(r.Title),
 		html.EscapeString(r.Title),
@@ -278,6 +279,15 @@ func recordHTML(r *watchitlater.Record, authToken string) string {
 		nextAttrs, html.EscapeString(r.VideoID), nextLabel,
 	)
 }
+
+// notesHTML is the collapsed "Notes" container — see main-randoread.md
+// section 05.02. Deliberately empty/unpopulated until expanded: the panel
+// only fetches GET /api/watching/note on first expand (watching-notes.js),
+// so folding it away (the default) costs nothing extra.
+const notesHTML = `<div class="watching-notes">` +
+	`<button type="button" class="watching-notes-toggle" aria-expanded="false">▸ Notes</button>` +
+	`<div class="watching-notes-panel hidden"></div>` +
+	`</div>`
 
 // withToken appends ?token=authToken to rawURL (which may already have its
 // own query string, though the watching URLs currently don't).

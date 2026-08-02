@@ -174,6 +174,19 @@ func newMux(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/watching/video", watchingHandler.HandleVideo)
 	mux.HandleFunc("GET /api/watching/thumbnail", watchingHandler.HandleThumbnail)
 
+	// Per-video notes (main-randoread.md 05.02) — Dropbox is used directly
+	// (not vaultListCache) for the notes folder itself, so a just-saved note
+	// is immediately visible to the next lookup; vaultListCache is reused
+	// for embed resolution and the related-note fuzzy search, same as
+	// Rando/Clipped already do.
+	watchingNotesHandler := handlers.NewWatchingNotesHandler(watchitlaterClient, dropboxClient, vaultListCache, cfg.VaultRoot)
+	watchingNotesHandler.AuthToken = cfg.AuthToken
+	mux.HandleFunc("GET /api/watching/note", watchingNotesHandler.HandleGet)
+	mux.HandleFunc("POST /api/watching/note", watchingNotesHandler.HandleSave)
+	mux.HandleFunc("GET /api/watching/note/search", watchingNotesHandler.HandleSearch)
+	mux.HandleFunc("POST /api/watching/note/related", watchingNotesHandler.HandleAddRelated)
+	mux.HandleFunc("GET /api/watching/note/related-preview", watchingNotesHandler.HandleRelatedPreview)
+
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatal(err)

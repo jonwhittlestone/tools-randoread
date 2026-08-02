@@ -122,6 +122,97 @@ func TestDownloadFailsWhenRefreshFails(t *testing.T) {
 	}
 }
 
+func TestUploadSuccess(t *testing.T) {
+	content := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer valid-token" {
+			t.Errorf("unexpected Authorization header: %q", got)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/octet-stream" {
+			t.Errorf("unexpected Content-Type: %q", got)
+		}
+		var arg struct {
+			Path       string `json:"path"`
+			Mode       string `json:"mode"`
+			Autorename bool   `json:"autorename"`
+			Mute       bool   `json:"mute"`
+		}
+		if err := json.Unmarshal([]byte(r.Header.Get("Dropbox-API-Arg")), &arg); err != nil {
+			t.Fatalf("unmarshal Dropbox-API-Arg: %v", err)
+		}
+		if arg.Path != "/notes/hello.md" {
+			t.Errorf("unexpected path in Dropbox-API-Arg: %q", arg.Path)
+		}
+		if arg.Mode != "overwrite" || arg.Autorename || !arg.Mute {
+			t.Errorf("unexpected upload args: %+v", arg)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if string(body) != "# hello" {
+			t.Errorf("unexpected body: %q", body)
+		}
+		fmt.Fprint(w, `{"name": "hello.md"}`)
+	}))
+	defer content.Close()
+
+	c := newTestClient(t, nil, content)
+
+	if err := c.Upload("/notes/hello.md", []byte("# hello")); err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+}
+
+func TestUploadRefreshesExpiredTokenAndRetries(t *testing.T) {
+	attempt := 0
+	content := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt++
+		if attempt == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer refreshed-token" {
+			t.Errorf("expected refreshed token on retry, got %q", got)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if string(body) != "content" {
+			t.Errorf("expected body to survive retry, got %q", body)
+		}
+		fmt.Fprint(w, `{"name": "hello.md"}`)
+	}))
+	defer content.Close()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "refreshed-token"}) //nolint:errcheck
+	}))
+	defer api.Close()
+
+	c := newTestClient(t, api, content)
+
+	if err := c.Upload("/notes/hello.md", []byte("content")); err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+}
+
+func TestUploadFailsWhenRefreshFails(t *testing.T) {
+	content := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer content.Close()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer api.Close()
+
+	c := newTestClient(t, api, content)
+
+	if err := c.Upload("/notes/hello.md", []byte("content")); err == nil {
+		t.Fatal("expected error when refresh fails, got nil")
+	}
+}
+
 func TestListFolderPaginates(t *testing.T) {
 	calls := 0
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -76,7 +76,7 @@ a:hover {
 /* ── App shell ────────────────────────────────────────────────────────── */
 
 #app {
-  max-width: 720px;
+  max-width: 1024px;
   margin: 0 auto;
   padding: 0;
   display: flex;
@@ -86,10 +86,12 @@ a:hover {
 }
 
 /* Stays put while #note-scroll scrolls beneath it — Daily/Rando/Clipped and
-   the note title are always visible. */
+   the note title are always visible. Padding scales with #app's wider
+   1024px max-width so the extra room reads as breathing space, not just a
+   longer line length. */
 .app-header {
   flex-shrink: 0;
-  padding: 16px 16px 0 16px;
+  padding: 24px 24px 0 24px;
   background: var(--bg-primary);
 }
 
@@ -194,7 +196,7 @@ a:hover {
   min-height: 0;
   overflow-y: auto;
   background: var(--bg-secondary);
-  padding: 16px;
+  padding: 24px;
 }
 
 /* ── Rendered note ────────────────────────────────────────────────────── */
@@ -305,7 +307,7 @@ a:hover {
 .watching video {
   display: block;
   width: 100%;
-  max-width: 640px;
+  max-width: 960px;
   border-radius: 4px;
   margin-bottom: 12px;
 }
@@ -501,4 +503,210 @@ a:hover {
 
 .emoji-picker-btn.ok:hover {
   background: var(--accent-hover);
+}
+
+/* ── Watching It Later: per-video notes (main-randoread.md 05.02) ───────── */
+
+.watching-notes {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.watching-notes-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.watching-notes-panel {
+  margin-top: 8px;
+  max-width: 100%;
+}
+
+.watching-notes-refs {
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.watching-notes-ref-main {
+  color: var(--text-muted);
+}
+
+.watching-notes-ref-sep {
+  color: var(--text-muted);
+}
+
+.watching-notes-ref-link {
+  color: var(--h2);
+}
+
+.watching-notes-preview {
+  margin: 8px 0;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.watching-notes-body {
+  line-height: 150%;
+}
+
+.watching-notes-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.watching-notes-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.watching-notes-edit-btn,
+.watching-notes-done-btn,
+.watching-notes-link-btn {
+  background: var(--bg-secondary);
+  color: var(--h2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+/* ── Notes editor — deliberately spans the wider #app width (not capped
+   like read-only prose) so there's real room to write, per Jon. ────────── */
+
+.watching-notes-editor {
+  margin-top: 8px;
+}
+
+.watching-notes-textarea {
+  display: block;
+  width: 100%;
+  min-height: 320px;
+  padding: 16px;
+  background: var(--bg-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+}
+
+.watching-notes-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.watching-notes-vim-toggle {
+  background: var(--bg-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.watching-notes-save-status {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Vim mode indicator — ported from tools-browsernotes/styles.css, restyled
+   to this app's Dark Moss palette instead of its fixed dark colors. */
+.watching-notes-vim-indicator {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  display: none;
+}
+
+.watching-notes-vim-indicator.active {
+  display: inline-block;
+}
+
+.watching-notes-vim-indicator.normal-mode {
+  background: var(--h2);
+  color: var(--bg-primary);
+  border-color: var(--h2);
+}
+
+.watching-notes-vim-indicator.insert-mode {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.watching-notes-vim-indicator.visual-mode {
+  background: var(--h6);
+  color: var(--bg-primary);
+  border-color: var(--h6);
+}
+
+/* Block cursor overlay vim-mode.js positions absolutely over the textarea in
+   normal mode (readonly, so no native caret shows) — one shared element for
+   the whole app; see index.html. */
+.vim-cursor {
+  position: absolute;
+  background: var(--h2);
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ── "Linking to existing note" fuzzy-find picker ────────────────────────── */
+
+.watching-notes-picker {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.watching-notes-picker-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.watching-notes-picker-results {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.watching-notes-picker-result {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  word-break: break-word;
+}
+
+.watching-notes-picker-result:hover {
+  background: var(--bg-secondary);
 }
