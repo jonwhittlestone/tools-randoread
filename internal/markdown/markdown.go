@@ -24,7 +24,22 @@ var (
 	embedPattern         = regexp.MustCompile(`!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]`)
 	wikilinkPattern      = regexp.MustCompile(`\[\[([^\]|]+)(?:\|([^\]]+))?\]\]`)
 	standardImagePattern = regexp.MustCompile(`!\[([^\]]*)\]\(([^)\s]+)\)`)
+	anchorHrefPattern    = regexp.MustCompile(`<a href="`)
 )
+
+// openLinksInNewTab adds target="_blank" (plus the standard rel guard
+// against the new tab getting a handle back on window.opener) to every
+// rendered link — both explicit "[text](url)" links and GFM's bare-URL
+// autolinking. Without this, clicking a link inside a note (e.g. a "vault
+// references" entry, or a plain pasted URL in a clipping) navigates the
+// whole single-page app away in the same tab, losing all client-side state.
+// Post-processed on the final HTML string rather than via a goldmark AST
+// transform — goldmark's default link renderer doesn't emit arbitrary node
+// attributes, and every <a> goldmark ever emits starts with `<a href="`
+// (href always comes first), so this is exact rather than a heuristic.
+func openLinksInNewTab(html string) string {
+	return anchorHrefPattern.ReplaceAllString(html, `<a target="_blank" rel="noopener noreferrer" href="`)
+}
 
 var renderer = goldmark.New(
 	goldmark.WithExtensions(extension.GFM),
@@ -49,7 +64,7 @@ var xhtmlRenderer = goldmark.New(
 // Both are skipped inside fenced code blocks so example markdown in a note
 // doesn't get rewritten.
 func Render(source []byte, resolveImage ImageResolver) string {
-	return render(renderer, source, resolveImage, false)
+	return openLinksInNewTab(render(renderer, source, resolveImage, false))
 }
 
 // RenderXHTML behaves like Render, with two differences needed for

@@ -34,7 +34,16 @@
   }
 
   var SKELETON_HTML =
+    // fix 3 (05.02.02): note controls right-justified on the same line as
+    // the "main | related note" breadcrumb, not stacked below the body.
+    '<div class="watching-notes-header-row">' +
     '<div class="watching-notes-refs"></div>' +
+    '<div class="watching-notes-actions hidden">' +
+    '<button type="button" class="watching-notes-edit-btn">✏️ Edit</button>' +
+    '<button type="button" class="watching-notes-done-btn hidden">Done</button>' +
+    '<button type="button" class="watching-notes-link-btn">🔗 Linking to existing note</button>' +
+    "</div>" +
+    "</div>" +
     '<div class="watching-notes-preview hidden"></div>' +
     '<div class="watching-notes-body"></div>' +
     '<div class="watching-notes-editor hidden">' +
@@ -44,11 +53,6 @@
     '<span class="watching-notes-vim-indicator"></span>' +
     '<span class="watching-notes-save-status"></span>' +
     "</div>" +
-    "</div>" +
-    '<div class="watching-notes-actions hidden">' +
-    '<button type="button" class="watching-notes-edit-btn">✏️ Edit</button>' +
-    '<button type="button" class="watching-notes-done-btn hidden">Done</button>' +
-    '<button type="button" class="watching-notes-link-btn">🔗 Linking to existing note</button>' +
     "</div>" +
     '<div class="watching-notes-picker hidden">' +
     '<input type="text" class="watching-notes-picker-input" placeholder="Search vault notes…">' +
@@ -82,12 +86,28 @@
   var saveTimers = new WeakMap();
   var pendingContent = new WeakMap();
   var vimInstances = new WeakMap();
+  // fix 2 (05.02.02): the note body's own "## vault references" links (real
+  // markdown links rendered server-side, pointing at raw vault paths — not
+  // servable URLs) need to be routed through the same inline preview as the
+  // breadcrumb, not left to navigate the browser away. Tracked per panel so
+  // the delegated click handler can tell "known reference link" apart from
+  // an ordinary external link (e.g. the note's YouTube/source URL).
+  var referencePaths = new WeakMap();
 
   function renderReferences(panel, references) {
     var els = panelEls(panel);
     els.refs.innerHTML = "";
+    referencePaths.set(
+      panel,
+      (references || []).map(function (ref) {
+        return ref.path;
+      })
+    );
 
-    var main = document.createElement("span");
+    // fix 1: "main" is clickable (not just a static label) — it re-fetches
+    // and shows this video's own note, same as any other breadcrumb entry.
+    var main = document.createElement("a");
+    main.href = "#";
     main.className = "watching-notes-ref-main";
     main.textContent = "main";
     els.refs.appendChild(main);
@@ -120,14 +140,12 @@
     els.actions.classList.remove("hidden");
   }
 
-  function loadPanel(panel) {
-    panel.innerHTML = SKELETON_HTML;
+  // Fetches this video's own note fresh from Dropbox and fills panel with
+  // it. Shared by the initial load and by re-clicking "main" (fix 4: a
+  // header link click always re-fetches, it's never served stale/cached).
+  function fetchAndFillMain(panel) {
     var els = panelEls(panel);
-    els.body.textContent = "Loading…";
-    wireEditor(panel);
-    wirePicker(panel);
-
-    fetchJSON("api/watching/note")
+    return fetchJSON("api/watching/note")
       .then(function (r) {
         if (!r.ok) {
           els.body.textContent = r.data.error || "Failed to load notes.";
@@ -138,6 +156,25 @@
       .catch(function () {
         els.body.textContent = "Failed to load notes.";
       });
+  }
+
+  function loadPanel(panel) {
+    panel.innerHTML = SKELETON_HTML;
+    var els = panelEls(panel);
+    els.body.textContent = "Loading…";
+    wireEditor(panel);
+    wirePicker(panel);
+    fetchAndFillMain(panel);
+  }
+
+  // fix 4: re-clicking "main" always re-fetches fresh content from Dropbox
+  // (rather than just re-showing whatever's already in memory) and drops
+  // back out of any open related-note preview.
+  function refreshMainNote(panel) {
+    var els = panelEls(panel);
+    els.preview.classList.add("hidden");
+    els.body.textContent = "Loading…";
+    fetchAndFillMain(panel);
   }
 
   function wireEditor(panel) {
@@ -369,11 +406,37 @@
       return;
     }
 
+    var mainLink = event.target.closest(".watching-notes-ref-main");
+    if (mainLink) {
+      event.preventDefault();
+      refreshMainNote(mainLink.closest(".watching-notes-panel"));
+      return;
+    }
+
     var refLink = event.target.closest(".watching-notes-ref-link");
     if (refLink) {
       event.preventDefault();
       toggleRelatedPreview(refLink.closest(".watching-notes-panel"), refLink.dataset.path);
       return;
+    }
+
+    // fix 2 (05.02.02): a "## vault references" link *inside the note body*
+    // (real markdown rendered server-side, pointing at a raw vault path —
+    // not a servable URL) — route it through the same inline preview the
+    // breadcrumb links use instead of letting it navigate nowhere useful.
+    // Anything else in the body (the note's own YouTube/source URL) isn't a
+    // known reference path, so it falls through and opens normally in a new
+    // tab (the renderer already adds target="_blank" — see fix 5).
+    var bodyLink = event.target.closest(".watching-notes-body a");
+    if (bodyLink) {
+      var panelForBodyLink = bodyLink.closest(".watching-notes-panel");
+      var knownPaths = referencePaths.get(panelForBodyLink) || [];
+      var href = bodyLink.getAttribute("href");
+      if (knownPaths.indexOf(href) !== -1) {
+        event.preventDefault();
+        toggleRelatedPreview(panelForBodyLink, href);
+        return;
+      }
     }
 
     var resultItem = event.target.closest(".watching-notes-picker-result");

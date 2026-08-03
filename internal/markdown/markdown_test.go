@@ -22,15 +22,28 @@ func TestRenderBasicHeadingAndParagraph(t *testing.T) {
 
 func TestRenderStandardMarkdownLinkIsClickable(t *testing.T) {
 	html := Render([]byte("[Sunweb](https://www.sunweb.co.uk/ski)"), resolveNone)
-	if !strings.Contains(html, `<a href="https://www.sunweb.co.uk/ski">Sunweb</a>`) {
+	if !strings.Contains(html, `href="https://www.sunweb.co.uk/ski">Sunweb</a>`) {
 		t.Fatalf("expected a rendered anchor, got: %s", html)
 	}
 }
 
 func TestRenderLinkifiesBareURL(t *testing.T) {
 	html := Render([]byte("https://www.sunweb.co.uk/ski/france"), resolveNone)
-	if !strings.Contains(html, `<a href="https://www.sunweb.co.uk/ski/france">`) {
+	if !strings.Contains(html, `href="https://www.sunweb.co.uk/ski/france">`) {
 		t.Fatalf("expected the bare URL to be autolinked, got: %s", html)
+	}
+}
+
+func TestRenderLinksOpenInNewTab(t *testing.T) {
+	// Without this, clicking any link — a "vault references" entry, a
+	// pasted URL in a clipping — navigates the whole single-page app away
+	// in the same tab, losing all client-side state.
+	html := Render([]byte("[Sunweb](https://www.sunweb.co.uk/ski)\n\nhttps://bare-url.example.com"), resolveNone)
+	if !strings.Contains(html, `<a target="_blank" rel="noopener noreferrer" href="https://www.sunweb.co.uk/ski">`) {
+		t.Fatalf("expected the explicit link to open in a new tab, got: %s", html)
+	}
+	if !strings.Contains(html, `<a target="_blank" rel="noopener noreferrer" href="https://bare-url.example.com">`) {
+		t.Fatalf("expected the autolinked bare URL to open in a new tab, got: %s", html)
 	}
 }
 
@@ -114,7 +127,7 @@ func TestRenderResolvesRelativePDFEmbedAsObjectTag(t *testing.T) {
 	if !strings.Contains(html, `<object data="api/asset?path=/assets/handwritten-note.pdf" type="application/pdf"`) {
 		t.Fatalf("expected the PDF embed to resolve to an <object> tag, got: %s", html)
 	}
-	if !strings.Contains(html, `<a href="api/asset?path=/assets/handwritten-note.pdf">`) {
+	if !strings.Contains(html, `href="api/asset?path=/assets/handwritten-note.pdf">`) {
 		t.Fatalf("expected a fallback link for viewers that can't render the <object>, got: %s", html)
 	}
 	if strings.Contains(html, "<img") {
@@ -147,7 +160,7 @@ func TestRenderResolvesRelativeVideoEmbedAsVideoTag(t *testing.T) {
 	if !strings.Contains(html, `<source src="api/asset?path=/videos/stretch.mp4">`) {
 		t.Fatalf("expected the resolved asset URL as the video source, got: %s", html)
 	}
-	if !strings.Contains(html, `<a href="api/asset?path=/videos/stretch.mp4">`) {
+	if !strings.Contains(html, `href="api/asset?path=/videos/stretch.mp4">`) {
 		t.Fatalf("expected a fallback link for browsers that can't play the <video>, got: %s", html)
 	}
 	if strings.Contains(html, "<img") {
@@ -233,10 +246,10 @@ func TestRenderStripsFrontmatterAndLinkifiesSource(t *testing.T) {
 	if strings.Contains(html, "title:") || strings.Contains(html, "tags:") {
 		t.Fatalf("expected raw frontmatter fields to be stripped, got: %s", html)
 	}
-	if !strings.Contains(html, `<a href="https://example.com/article?utm_source=x&amp;utm_medium=y">`) {
+	if !strings.Contains(html, `href="https://example.com/article?utm_source=x&amp;utm_medium=y">`) {
 		t.Fatalf("expected the source URL to be a clickable link, got: %s", html)
 	}
-	if !strings.Contains(html, `View original</a> | <a href="https://example.com/article?utm_source=x&amp;utm_medium=y">example.com</a>`) {
+	if !strings.Contains(html, `View original</a> | `) || !strings.Contains(html, `example.com</a>`) {
 		t.Fatalf("expected the source's base URL to be shown after a pipe, got: %s", html)
 	}
 	if !strings.Contains(html, "<h1>How to ask for help</h1>") {
