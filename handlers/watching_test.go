@@ -25,6 +25,10 @@ type fakeWatchitlaterClient struct {
 	setEmojiErr   error
 	proxyVideoErr error
 	proxyThumbErr error
+	history       []watchitlater.HistoryRecord
+	historyErr    error
+	stageVideoErr error
+	stagedVideoID string
 }
 
 func (f *fakeWatchitlaterClient) Current() (*watchitlater.Record, error) {
@@ -54,6 +58,13 @@ func (f *fakeWatchitlaterClient) ProxyThumbnail(w http.ResponseWriter, r *http.R
 	}
 	w.Write([]byte("thumb-bytes")) //nolint:errcheck
 	return nil
+}
+func (f *fakeWatchitlaterClient) History() ([]watchitlater.HistoryRecord, error) {
+	return f.history, f.historyErr
+}
+func (f *fakeWatchitlaterClient) StageVideo(videoID string) error {
+	f.stagedVideoID = videoID
+	return f.stageVideoErr
 }
 
 func TestWatchingServeHTTP_RendersStagedRecord(t *testing.T) {
@@ -582,5 +593,87 @@ func TestHandleThumbnail_DelegatesToClient(t *testing.T) {
 
 	if rec.Body.String() != "thumb-bytes" {
 		t.Errorf("body = %q, want thumb-bytes", rec.Body.String())
+	}
+}
+
+func TestHandleHistory_ReturnsVideosFromClient(t *testing.T) {
+	f := &fakeWatchitlaterClient{history: []watchitlater.HistoryRecord{
+		{VideoID: "vid1", Title: "Some Title", Emoji: "🎸", CategorizedAt: "2026-08-01T00:00:00Z"},
+	}}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching/history", nil)
+	rec := httptest.NewRecorder()
+	h.HandleHistory(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Videos []watchitlater.HistoryRecord `json:"videos"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Videos) != 1 || body.Videos[0].VideoID != "vid1" {
+		t.Fatalf("unexpected videos: %+v", body.Videos)
+	}
+}
+
+func TestHandleHistory_UpstreamErrorReturns502(t *testing.T) {
+	f := &fakeWatchitlaterClient{historyErr: errors.New("connection refused")}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching/history", nil)
+	rec := httptest.NewRecorder()
+	h.HandleHistory(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
+	}
+}
+
+func TestHandleStage_DelegatesVideoIDToClient(t *testing.T) {
+	f := &fakeWatchitlaterClient{}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/watching/stage/vid1", nil)
+	req.SetPathValue("videoID", "vid1")
+	rec := httptest.NewRecorder()
+	h.HandleStage(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if f.stagedVideoID != "vid1" {
+		t.Errorf("stagedVideoID = %q, want vid1", f.stagedVideoID)
+	}
+}
+
+func TestHandleStage_MissingVideoID(t *testing.T) {
+	f := &fakeWatchitlaterClient{}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/watching/stage/", nil)
+	req.SetPathValue("videoID", "")
+	rec := httptest.NewRecorder()
+	h.HandleStage(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestHandleStage_UpstreamErrorReturns502(t *testing.T) {
+	f := &fakeWatchitlaterClient{stageVideoErr: errors.New("409 conflict")}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/watching/stage/vid1", nil)
+	req.SetPathValue("videoID", "vid1")
+	rec := httptest.NewRecorder()
+	h.HandleStage(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
 	}
 }

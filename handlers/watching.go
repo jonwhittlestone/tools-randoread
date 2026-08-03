@@ -22,6 +22,8 @@ type WatchitlaterClient interface {
 	SetEmoji(videoID, emoji string) error
 	ProxyVideo(w http.ResponseWriter, r *http.Request) error
 	ProxyThumbnail(w http.ResponseWriter, r *http.Request) error
+	History() ([]watchitlater.HistoryRecord, error)
+	StageVideo(videoID string) error
 }
 
 // WatchingHandler serves the "Watching It Later 👀" section — see
@@ -192,6 +194,38 @@ func (h *WatchingHandler) HandleNextStatus(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status) //nolint:errcheck
+}
+
+// HandleHistory serves GET /api/watching/history — every previously
+// categorized video, most recently categorized first, for "Load watch
+// later videos" (main-randoread.md 05.02.03): clicking the "Watching it
+// Later 👀" header (mirrors the Clippings breadcrumb link) shows this as a
+// table, and clicking a row's title re-stages that video via HandleStage.
+func (h *WatchingHandler) HandleHistory(w http.ResponseWriter, r *http.Request) {
+	videos, err := h.Client.History()
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "failed to reach watchitlater")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"videos": videos}) //nolint:errcheck
+}
+
+// HandleStage serves POST /api/watching/stage/{videoID} — proxies to
+// tools-watchitlater's re-stage endpoint (fire-and-forget; poll
+// HandleNextStatus for progress, same as HandleNext).
+func (h *WatchingHandler) HandleStage(w http.ResponseWriter, r *http.Request) {
+	videoID := r.PathValue("videoID")
+	if videoID == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing video ID")
+		return
+	}
+	if err := h.Client.StageVideo(videoID); err != nil {
+		writeJSONError(w, http.StatusBadGateway, "failed to stage video")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "started"}) //nolint:errcheck
 }
 
 // HandleVideo serves GET /api/watching/video — streams the staged video's

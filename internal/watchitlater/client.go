@@ -97,6 +97,40 @@ func (c *Client) NextStatus() (*NextStatus, error) {
 	return &s, nil
 }
 
+// HistoryRecord mirrors one entry of tools-watchitlater's GET
+// /api/watching/history response — a previously categorized video.
+type HistoryRecord struct {
+	VideoID       string `json:"videoID"`
+	Title         string `json:"title"`
+	YoutubeURL    string `json:"youtubeURL"`
+	DownloadedAt  string `json:"downloadedAt"`
+	UploadedAt    string `json:"uploadedAt"`
+	Emoji         string `json:"emoji"`
+	CategorizedAt string `json:"categorizedAt"`
+}
+
+// History fetches every previously categorized video, most recently
+// categorized first — "Load watch later videos" (main-randoread.md
+// 05.02.03).
+func (c *Client) History() ([]HistoryRecord, error) {
+	var resp struct {
+		Videos []HistoryRecord `json:"videos"`
+	}
+	if err := c.getJSON("api/watching/history", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Videos, nil
+}
+
+// StageVideo re-downloads and stages videoID as the current video — like
+// StartNext, but for one specific already-categorized video rather than
+// walking uncategorized candidates. Poll NextStatus for progress, same as
+// StartNext; returns an error on a non-200 response (e.g. 409 if a fetch is
+// already running, 400 if videoID hasn't been categorized).
+func (c *Client) StageVideo(videoID string) error {
+	return c.doStatusOK(http.MethodPost, "api/watching/stage/"+videoID, nil)
+}
+
 // SetEmoji tags videoID with emoji (or clears it, if emoji is "") via
 // tools-watchitlater's existing per-download emoji endpoint (feature 03.01
 // — nothing watching-specific needed here).

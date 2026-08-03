@@ -173,6 +173,8 @@ func newMux(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/watching/next/status", watchingHandler.HandleNextStatus)
 	mux.HandleFunc("GET /api/watching/video", watchingHandler.HandleVideo)
 	mux.HandleFunc("GET /api/watching/thumbnail", watchingHandler.HandleThumbnail)
+	mux.HandleFunc("GET /api/watching/history", watchingHandler.HandleHistory)
+	mux.HandleFunc("POST /api/watching/stage/{videoID}", watchingHandler.HandleStage)
 
 	// Per-video notes (main-randoread.md 05.02) — Dropbox is used directly
 	// (not vaultListCache) for the notes folder itself, so a just-saved note
