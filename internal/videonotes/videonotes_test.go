@@ -1,9 +1,28 @@
 package videonotes
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
+
+func TestReferenceJSONKeysAreLowercase(t *testing.T) {
+	// Regression: without json tags, encoding/json emits "Title"/"Path"
+	// verbatim, which doesn't match watching-notes.js's ref.title/ref.path —
+	// every reference-link click silently fell through to a real page
+	// navigation instead of the intended inline preview (found live).
+	data, err := json.Marshal(Reference{Title: "a title", Path: "/a/path.md"})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if got["title"] != "a title" || got["path"] != "/a/path.md" {
+		t.Fatalf(`expected lowercase "title"/"path" JSON keys, got: %s`, data)
+	}
+}
 
 func TestSlug(t *testing.T) {
 	cases := map[string]string{

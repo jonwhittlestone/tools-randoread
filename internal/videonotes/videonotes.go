@@ -68,10 +68,15 @@ func ApplyTemplate(templateRaw, youtubeURL string) string {
 	return result
 }
 
-// Reference is one entry in a note's "## vault references" section.
+// Reference is one entry in a note's "## vault references" section. Tagged
+// lowercase — without this, encoding/json emits "Title"/"Path" verbatim,
+// which silently doesn't match watching-notes.js's ref.title/ref.path
+// (found live: every reference-link click fell through to a real page
+// navigation instead of the intended inline preview, since the frontend's
+// path lookup was always undefined).
 type Reference struct {
-	Title string
-	Path  string
+	Title string `json:"title"`
+	Path  string `json:"path"`
 }
 
 var referenceLinePattern = regexp.MustCompile(`^- \[([^\]]*)\]\(([^)]*)\)$`)
