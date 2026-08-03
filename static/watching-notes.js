@@ -138,6 +138,7 @@
     var els = panelEls(panel);
     activeNote.set(panel, { path: data.path, raw: data.raw, isMain: true });
     els.body.innerHTML = data.html || "";
+    window.enhanceFoldableHeadings(els.body);
     els.preview.classList.add("hidden");
     els.body.classList.remove("hidden");
     renderReferences(panel, data.references);
@@ -388,6 +389,7 @@
     var els = panelEls(panel);
     activeNote.set(panel, { path: data.path, raw: data.raw, isMain: false });
     els.preview.innerHTML = data.html || "";
+    window.enhanceFoldableHeadings(els.preview);
   }
 
   // fix 2/3 (05.02.02): a related note *replaces* the video's own note in
