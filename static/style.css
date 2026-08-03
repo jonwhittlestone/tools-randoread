@@ -126,6 +126,31 @@ a:hover {
   flex: 1;
 }
 
+/* ── Mobile: the toolbar's 5 pill buttons wrapping to 2-3 lines ate a lot
+   of vertical space on a phone before any note content was even visible
+   (main-randoread.md 05.02.02, "Mobile fix"). Scroll horizontally on one
+   line instead, with smaller buttons/padding to fit more before scrolling
+   is needed. ────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .app-header {
+    padding: 12px 12px 0 12px;
+  }
+
+  .toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .pill-button {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+  }
+}
+
 .menu-panel {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
