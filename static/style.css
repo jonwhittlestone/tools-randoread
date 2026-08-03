@@ -156,7 +156,7 @@ a:hover {
 
   /* Collapsed (default): only the toggle and the active section show, on
      one line — everything else waits in the dropdown. */
-  .toolbar:not(.expanded) .pill-button:not(.active) {
+  .toolbar:not(.expanded) .pill-button:not(.active):not(.toolbar-toggle) {
     display: none;
   }
 
