@@ -81,6 +81,7 @@
     renderTitle(data.title);
     noteTitleRight.textContent = data.titleRight || "";
     noteContent.innerHTML = data.html;
+    window.enhanceFoldableHeadings(noteContent);
     currentNote = { path: data.path, title: data.title };
   }
 
