@@ -126,28 +126,58 @@ a:hover {
   flex: 1;
 }
 
+/* Hidden on desktop — only appears in the mobile dropdown below. Styled
+   exactly like a pill-button (see .toolbar-toggle rules further down) so it
+   reads as "one more option," not a different kind of control. */
+.toolbar-toggle {
+  display: none;
+  order: -1; /* always first, ahead of Daily/Rando/etc. */
+}
+
 /* ── Mobile: the toolbar's 5 pill buttons wrapping to 2-3 lines ate a lot
    of vertical space on a phone before any note content was even visible
-   (main-randoread.md 05.02.02, "Mobile fix"). Scroll horizontally on one
-   line instead, with smaller buttons/padding to fit more before scrolling
-   is needed. ────────────────────────────────────────────────────────── */
+   (main-randoread.md 05.02.02, "Mobile fix"). Collapsed to a dropdown
+   instead — one full-width pill-button per option (styling/emojis intact),
+   stacked vertically, opened by #toolbar-toggle (app.js) — rather than
+   either wrapping (tall) or scrolling sideways (options not all visible at
+   once, easy to miss one). ─────────────────────────────────────────────── */
 @media (max-width: 600px) {
   .app-header {
     padding: 12px 12px 0 12px;
   }
 
-  .toolbar {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
+  .toolbar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    padding: 8px 0;
   }
 
-  .pill-button {
-    flex-shrink: 0;
-    white-space: nowrap;
-    padding: 6px 12px;
-    font-size: 0.85rem;
+  /* Collapsed (default): only the toggle and the active section show, on
+     one line — everything else waits in the dropdown. */
+  .toolbar:not(.expanded) .pill-button:not(.active) {
+    display: none;
+  }
+
+  .toolbar:not(.expanded) .spacer {
+    display: none;
+  }
+
+  /* Expanded: every option stacks as a full-width row, toggle included
+     (harmless to show again — tapping it just re-collapses). */
+  .toolbar.expanded {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar.expanded .pill-button {
+    width: 100%;
+    text-align: left;
+  }
+
+  .toolbar.expanded .spacer {
+    display: none;
   }
 }
 
