@@ -23,6 +23,11 @@
   <section id="app" class="hidden">
     <header class="app-header">
       <div class="toolbar">
+        <!-- Mobile only (see the @media block in style.css) — collapses the
+             toolbar to just the active section + this toggle, expanding to
+             the full pill-button list (styling/emojis intact) as a dropdown
+             on tap. Hidden entirely on desktop, where all 5 always show. -->
+        <button id="toolbar-toggle" class="pill-button toolbar-toggle" type="button" aria-label="Choose section" aria-expanded="false">▾</button>
         <button id="daily-button" class="pill-button">Daily 📅</button>
         <button id="rando-button" class="pill-button">Rando ♻</button>
         <button id="rando-clipped-button" class="pill-button">Rando Clipped 🎠</button>

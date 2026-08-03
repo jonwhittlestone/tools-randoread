@@ -11,6 +11,8 @@
   const randoClippedButton = document.getElementById("rando-clipped-button");
   const clippedButton = document.getElementById("clipped-button");
   const watchingButton = document.getElementById("watching-button");
+  const toolbar = document.querySelector(".toolbar");
+  const toolbarToggle = document.getElementById("toolbar-toggle");
   const noteTitle = document.getElementById("note-title");
   const noteTitleRight = document.getElementById("note-title-right");
   const noteContent = document.getElementById("note-content");
@@ -43,6 +45,12 @@
     for (const [key, button] of Object.entries(modeButtons)) {
       button.classList.toggle("active", key === mode);
     }
+    // Mobile dropdown (see the @media block in style.css) — picking a
+    // section is the natural "done" signal, so collapse back down to just
+    // the toggle + newly-active pill. A no-op on desktop, where .expanded
+    // is never set in the first place.
+    toolbar.classList.remove("expanded");
+    toolbarToggle.setAttribute("aria-expanded", "false");
     window.history.replaceState(null, "", "#" + mode);
     // Cleared on every section switch (rather than only in renderNote) so a
     // stale "next fresh video" countdown from Watching It Later can't
@@ -119,6 +127,14 @@
     if (!menuPanel.classList.contains("hidden")) {
       refreshDropboxStatus();
     }
+  });
+
+  // Mobile-only dropdown toggle for the section pills — see the @media
+  // block in style.css. Has no visible effect on desktop (.toolbar-toggle
+  // stays display:none there), so this listener is harmless to always wire.
+  toolbarToggle.addEventListener("click", () => {
+    const expanded = toolbar.classList.toggle("expanded");
+    toolbarToggle.setAttribute("aria-expanded", String(expanded));
   });
 
   dropboxConnectBtn.addEventListener("click", () => {
