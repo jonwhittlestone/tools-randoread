@@ -184,7 +184,7 @@ func (c *Client) proxyGet(w http.ResponseWriter, r *http.Request, path string) e
 	}
 	defer resp.Body.Close()
 
-	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified"} {
+	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "Cache-Control"} {
 		if v := resp.Header.Get(h); v != "" {
 			w.Header().Set(h, v)
 		}
