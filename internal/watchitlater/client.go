@@ -56,6 +56,14 @@ type Record struct {
 	// the moment the period rolls over, whether or not this video is
 	// actually stale).
 	StagedAt string `json:"stagedAt"`
+	// CategorizedAt (RFC3339) is when this video was tagged with an emoji —
+	// empty if it hasn't been tagged. Distinct from StagedAt: re-staging an
+	// old, already-tagged video from history ("Load watch later videos")
+	// makes StagedAt recent while CategorizedAt stays whenever it was
+	// originally tagged, which is exactly what videoIsStaleAndTagged needs
+	// to tell "genuinely tagged today" apart from "an old video someone
+	// just replayed from history."
+	CategorizedAt string `json:"categorizedAt"`
 	// NextFreshVideoAt (RFC3339) is when the daily limit next rolls over —
 	// see tools-watchitlater's handlers/period.go.
 	NextFreshVideoAt string `json:"nextFreshVideoAt"`

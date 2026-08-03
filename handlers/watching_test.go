@@ -169,12 +169,12 @@ func TestWatchingServeHTTP_AutoAdvancesStaleTaggedVideo(t *testing.T) {
 	// The staged video was tagged (watched, categorised) in a previous
 	// daily-limit period — don't make the user click "Get Next Video" for
 	// something they've already dealt with; just continue automatically.
-	staleStagedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	staleCategorizedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
 	f := &fakeWatchitlaterClient{
 		current: &watchitlater.Record{
 			Staged: true, VideoID: "vid1", Title: "Old Video", Emoji: "✅",
 			VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
-			StagedAt: staleStagedAt,
+			CategorizedAt: staleCategorizedAt,
 		},
 		status: &watchitlater.NextStatus{},
 	}
@@ -197,13 +197,13 @@ func TestWatchingServeHTTP_AutoAdvancesStaleTaggedVideo(t *testing.T) {
 
 func TestWatchingServeHTTP_DoesNotAutoAdvanceFreshTaggedVideo(t *testing.T) {
 	// Same period as "now" — tagged today, quota may happen to still be
-	// available (e.g. the very first video ever), but it was NOT staged in
+	// available (e.g. the very first video ever), but it was NOT tagged in
 	// a previous period, so this must not auto-advance.
-	freshStagedAt := time.Date(2026, 7, 5, 17, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	freshCategorizedAt := time.Date(2026, 7, 5, 17, 0, 0, 0, randoLocation).Format(time.RFC3339)
 	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
 		Staged: true, VideoID: "vid1", Title: "Fresh Video", Emoji: "✅",
 		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
-		StagedAt: freshStagedAt,
+		CategorizedAt: freshCategorizedAt,
 	}}
 	h := NewWatchingHandler(f)
 	h.Now = func() time.Time { return time.Date(2026, 7, 5, 18, 0, 0, 0, randoLocation) }
@@ -219,6 +219,42 @@ func TestWatchingServeHTTP_DoesNotAutoAdvanceFreshTaggedVideo(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
 	if !strings.Contains(body["html"], "Fresh Video") {
 		t.Errorf("expected the video's own page, got: %s", body["html"])
+	}
+}
+
+// TestWatchingServeHTTP_AutoAdvancesReplayedHistoryVideo guards against the
+// actual production bug found while smoke-testing "Load watch later
+// videos": re-staging an old, already-tagged video from the history table
+// sets StagedAt to right now, but its tag (CategorizedAt) is from long
+// ago. Before videoIsStaleAndTagged was switched to key off CategorizedAt
+// instead of StagedAt, the fresh StagedAt made a months-old replay look
+// like "tagged today" and get shown on the default view, instead of
+// auto-advancing back to the genuine current/uncategorized video.
+func TestWatchingServeHTTP_AutoAdvancesReplayedHistoryVideo(t *testing.T) {
+	longAgoCategorizedAt := time.Date(2018, 11, 28, 12, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	justNowStagedAt := time.Date(2026, 7, 5, 17, 59, 0, 0, randoLocation).Format(time.RFC3339)
+	f := &fakeWatchitlaterClient{
+		current: &watchitlater.Record{
+			Staged: true, VideoID: "vid1", Title: "Walking Bass Line Formula", Emoji: "🎸",
+			VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+			StagedAt: justNowStagedAt, CategorizedAt: longAgoCategorizedAt,
+		},
+		status: &watchitlater.NextStatus{},
+	}
+	h := NewWatchingHandler(f)
+	h.Now = func() time.Time { return time.Date(2026, 7, 5, 18, 0, 0, 0, randoLocation) }
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !f.startNextCall {
+		t.Error("expected StartNext to be called to advance past the replayed history video")
+	}
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if strings.Contains(body["html"], "Walking Bass Line Formula") {
+		t.Errorf("expected the fetching state, not the replayed video's own page: %s", body["html"])
 	}
 }
 
@@ -252,12 +288,12 @@ func TestWatchingServeHTTP_DoesNotAutoAdvanceStaleUntaggedVideo(t *testing.T) {
 }
 
 func TestWatchingServeHTTP_StaleTaggedVideoRespectsAlreadyRunningJob(t *testing.T) {
-	staleStagedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	staleCategorizedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
 	f := &fakeWatchitlaterClient{
 		current: &watchitlater.Record{
 			Staged: true, VideoID: "vid1", Title: "Old Video", Emoji: "✅",
 			VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
-			StagedAt: staleStagedAt,
+			CategorizedAt: staleCategorizedAt,
 		},
 		status: &watchitlater.NextStatus{Running: true},
 	}
