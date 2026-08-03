@@ -96,6 +96,15 @@ func (c *Client) StartNext() error {
 	return c.doStatusOK(http.MethodPost, "api/watching/next", nil)
 }
 
+// Reconcile kicks off the same background staging job as StartNext, but
+// without costing the daily "Get Next Video" allowance — for getting back
+// to the genuine current uncategorized video after what's staged turns out
+// to be stale (see videoIsStaleAndTagged). Returns an error on a non-200
+// response (e.g. 409 if one's already running).
+func (c *Client) Reconcile() error {
+	return c.doStatusOK(http.MethodPost, "api/watching/reconcile", nil)
+}
+
 // NextStatus polls the currently running (or just-finished) next-video job.
 func (c *Client) NextStatus() (*NextStatus, error) {
 	var s NextStatus

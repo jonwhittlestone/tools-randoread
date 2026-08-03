@@ -19,6 +19,8 @@ type fakeWatchitlaterClient struct {
 	currentErr    error
 	startNextErr  error
 	startNextCall bool
+	reconcileErr  error
+	reconcileCall bool
 	status        *watchitlater.NextStatus
 	statusErr     error
 	setEmojiCalls []struct{ videoID, emoji string }
@@ -37,6 +39,10 @@ func (f *fakeWatchitlaterClient) Current() (*watchitlater.Record, error) {
 func (f *fakeWatchitlaterClient) StartNext() error {
 	f.startNextCall = true
 	return f.startNextErr
+}
+func (f *fakeWatchitlaterClient) Reconcile() error {
+	f.reconcileCall = true
+	return f.reconcileErr
 }
 func (f *fakeWatchitlaterClient) NextStatus() (*watchitlater.NextStatus, error) {
 	return f.status, f.statusErr
@@ -185,8 +191,11 @@ func TestWatchingServeHTTP_AutoAdvancesStaleTaggedVideo(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if !f.startNextCall {
-		t.Error("expected StartNext to be called for a stale, tagged video")
+	if !f.reconcileCall {
+		t.Error("expected Reconcile to be called for a stale, tagged video")
+	}
+	if f.startNextCall {
+		t.Error("expected StartNext NOT to be called — reconciling back to a legitimately staged video must not cost the daily quota")
 	}
 	var body map[string]string
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
@@ -248,8 +257,11 @@ func TestWatchingServeHTTP_AutoAdvancesReplayedHistoryVideo(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if !f.startNextCall {
-		t.Error("expected StartNext to be called to advance past the replayed history video")
+	if !f.reconcileCall {
+		t.Error("expected Reconcile to be called to advance past the replayed history video")
+	}
+	if f.startNextCall {
+		t.Error("expected StartNext NOT to be called — today's real video already consumed the daily quota, so getting back to it must not go through the gated path")
 	}
 	var body map[string]string
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
@@ -306,6 +318,9 @@ func TestWatchingServeHTTP_StaleTaggedVideoRespectsAlreadyRunningJob(t *testing.
 
 	if f.startNextCall {
 		t.Error("expected no duplicate StartNext while a job is already running")
+	}
+	if f.reconcileCall {
+		t.Error("expected no duplicate Reconcile while a job is already running")
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 type WatchitlaterClient interface {
 	Current() (*watchitlater.Record, error)
 	StartNext() error
+	Reconcile() error
 	NextStatus() (*watchitlater.NextStatus, error)
 	SetEmoji(videoID, emoji string) error
 	ProxyVideo(w http.ResponseWriter, r *http.Request) error
@@ -103,9 +104,10 @@ func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		// Either nothing is staged (first-ever use, or mid-fetch — see the
 		// comment above), or what's staged is a stale, already-tagged
-		// video from a previous daily-limit period: advance automatically
-		// instead of making the user click "Get Next Video" for a video
-		// they've already dealt with.
+		// video (from a previous daily-limit period, or an old video just
+		// replayed from history): advance automatically instead of making
+		// the user click "Get Next Video" for a video they've already
+		// dealt with.
 		status, err := h.Client.NextStatus()
 		if err != nil {
 			writeJSONError(w, http.StatusBadGateway, "failed to check watchitlater status")
@@ -117,7 +119,20 @@ func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case status.Running:
 			body = fetchingHTML()
 		default:
-			if err := h.Client.StartNext(); err != nil {
+			// record.Staged means we're here because of staleness, not a
+			// genuinely empty slot — that's a correction back to the video
+			// that was already legitimately current, not "give me a new
+			// video," so it must go through Reconcile (no daily-quota
+			// gate) rather than StartNext, which would otherwise 409 if
+			// today's allowance was already spent staging that same video
+			// in the first place.
+			var startErr error
+			if record.Staged {
+				startErr = h.Client.Reconcile()
+			} else {
+				startErr = h.Client.StartNext()
+			}
+			if startErr != nil {
 				writeJSONError(w, http.StatusBadGateway, "failed to start fetching a video")
 				return
 			}
