@@ -164,6 +164,7 @@ func TestProxyVideo_ForwardsRangeHeaderAndUpstreamResponse(t *testing.T) {
 		w.Header().Set("Content-Type", "video/mp4")
 		w.Header().Set("Content-Range", "bytes 100-199/1000")
 		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusPartialContent)
 		w.Write([]byte("partial-video-bytes")) //nolint:errcheck
 	}))
@@ -188,6 +189,9 @@ func TestProxyVideo_ForwardsRangeHeaderAndUpstreamResponse(t *testing.T) {
 	}
 	if rec.Header().Get("Accept-Ranges") != "bytes" {
 		t.Errorf("Accept-Ranges = %q", rec.Header().Get("Accept-Ranges"))
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", rec.Header().Get("Cache-Control"))
 	}
 }
 

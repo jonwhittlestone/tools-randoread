@@ -56,6 +56,14 @@ type Record struct {
 	// the moment the period rolls over, whether or not this video is
 	// actually stale).
 	StagedAt string `json:"stagedAt"`
+	// CategorizedAt (RFC3339) is when this video was tagged with an emoji —
+	// empty if it hasn't been tagged. Distinct from StagedAt: re-staging an
+	// old, already-tagged video from history ("Load watch later videos")
+	// makes StagedAt recent while CategorizedAt stays whenever it was
+	// originally tagged, which is exactly what videoIsStaleAndTagged needs
+	// to tell "genuinely tagged today" apart from "an old video someone
+	// just replayed from history."
+	CategorizedAt string `json:"categorizedAt"`
 	// NextFreshVideoAt (RFC3339) is when the daily limit next rolls over —
 	// see tools-watchitlater's handlers/period.go.
 	NextFreshVideoAt string `json:"nextFreshVideoAt"`
@@ -88,6 +96,15 @@ func (c *Client) StartNext() error {
 	return c.doStatusOK(http.MethodPost, "api/watching/next", nil)
 }
 
+// Reconcile kicks off the same background staging job as StartNext, but
+// without costing the daily "Get Next Video" allowance — for getting back
+// to the genuine current uncategorized video after what's staged turns out
+// to be stale (see videoIsStaleAndTagged). Returns an error on a non-200
+// response (e.g. 409 if one's already running).
+func (c *Client) Reconcile() error {
+	return c.doStatusOK(http.MethodPost, "api/watching/reconcile", nil)
+}
+
 // NextStatus polls the currently running (or just-finished) next-video job.
 func (c *Client) NextStatus() (*NextStatus, error) {
 	var s NextStatus
@@ -95,6 +112,40 @@ func (c *Client) NextStatus() (*NextStatus, error) {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// HistoryRecord mirrors one entry of tools-watchitlater's GET
+// /api/watching/history response — a previously categorized video.
+type HistoryRecord struct {
+	VideoID       string `json:"videoID"`
+	Title         string `json:"title"`
+	YoutubeURL    string `json:"youtubeURL"`
+	DownloadedAt  string `json:"downloadedAt"`
+	UploadedAt    string `json:"uploadedAt"`
+	Emoji         string `json:"emoji"`
+	CategorizedAt string `json:"categorizedAt"`
+}
+
+// History fetches every previously categorized video, most recently
+// categorized first — "Load watch later videos" (main-randoread.md
+// 05.02.03).
+func (c *Client) History() ([]HistoryRecord, error) {
+	var resp struct {
+		Videos []HistoryRecord `json:"videos"`
+	}
+	if err := c.getJSON("api/watching/history", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Videos, nil
+}
+
+// StageVideo re-downloads and stages videoID as the current video — like
+// StartNext, but for one specific already-categorized video rather than
+// walking uncategorized candidates. Poll NextStatus for progress, same as
+// StartNext; returns an error on a non-200 response (e.g. 409 if a fetch is
+// already running, 400 if videoID hasn't been categorized).
+func (c *Client) StageVideo(videoID string) error {
+	return c.doStatusOK(http.MethodPost, "api/watching/stage/"+videoID, nil)
 }
 
 // SetEmoji tags videoID with emoji (or clears it, if emoji is "") via
@@ -150,7 +201,7 @@ func (c *Client) proxyGet(w http.ResponseWriter, r *http.Request, path string) e
 	}
 	defer resp.Body.Close()
 
-	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified"} {
+	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "Cache-Control"} {
 		if v := resp.Header.Get(h); v != "" {
 			w.Header().Set(h, v)
 		}

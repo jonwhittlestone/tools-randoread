@@ -19,12 +19,18 @@ type fakeWatchitlaterClient struct {
 	currentErr    error
 	startNextErr  error
 	startNextCall bool
+	reconcileErr  error
+	reconcileCall bool
 	status        *watchitlater.NextStatus
 	statusErr     error
 	setEmojiCalls []struct{ videoID, emoji string }
 	setEmojiErr   error
 	proxyVideoErr error
 	proxyThumbErr error
+	history       []watchitlater.HistoryRecord
+	historyErr    error
+	stageVideoErr error
+	stagedVideoID string
 }
 
 func (f *fakeWatchitlaterClient) Current() (*watchitlater.Record, error) {
@@ -33,6 +39,10 @@ func (f *fakeWatchitlaterClient) Current() (*watchitlater.Record, error) {
 func (f *fakeWatchitlaterClient) StartNext() error {
 	f.startNextCall = true
 	return f.startNextErr
+}
+func (f *fakeWatchitlaterClient) Reconcile() error {
+	f.reconcileCall = true
+	return f.reconcileErr
 }
 func (f *fakeWatchitlaterClient) NextStatus() (*watchitlater.NextStatus, error) {
 	return f.status, f.statusErr
@@ -54,6 +64,13 @@ func (f *fakeWatchitlaterClient) ProxyThumbnail(w http.ResponseWriter, r *http.R
 	}
 	w.Write([]byte("thumb-bytes")) //nolint:errcheck
 	return nil
+}
+func (f *fakeWatchitlaterClient) History() ([]watchitlater.HistoryRecord, error) {
+	return f.history, f.historyErr
+}
+func (f *fakeWatchitlaterClient) StageVideo(videoID string) error {
+	f.stagedVideoID = videoID
+	return f.stageVideoErr
 }
 
 func TestWatchingServeHTTP_RendersStagedRecord(t *testing.T) {
@@ -158,12 +175,12 @@ func TestWatchingServeHTTP_AutoAdvancesStaleTaggedVideo(t *testing.T) {
 	// The staged video was tagged (watched, categorised) in a previous
 	// daily-limit period — don't make the user click "Get Next Video" for
 	// something they've already dealt with; just continue automatically.
-	staleStagedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	staleCategorizedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
 	f := &fakeWatchitlaterClient{
 		current: &watchitlater.Record{
 			Staged: true, VideoID: "vid1", Title: "Old Video", Emoji: "✅",
 			VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
-			StagedAt: staleStagedAt,
+			CategorizedAt: staleCategorizedAt,
 		},
 		status: &watchitlater.NextStatus{},
 	}
@@ -174,8 +191,11 @@ func TestWatchingServeHTTP_AutoAdvancesStaleTaggedVideo(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if !f.startNextCall {
-		t.Error("expected StartNext to be called for a stale, tagged video")
+	if !f.reconcileCall {
+		t.Error("expected Reconcile to be called for a stale, tagged video")
+	}
+	if f.startNextCall {
+		t.Error("expected StartNext NOT to be called — reconciling back to a legitimately staged video must not cost the daily quota")
 	}
 	var body map[string]string
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
@@ -186,13 +206,13 @@ func TestWatchingServeHTTP_AutoAdvancesStaleTaggedVideo(t *testing.T) {
 
 func TestWatchingServeHTTP_DoesNotAutoAdvanceFreshTaggedVideo(t *testing.T) {
 	// Same period as "now" — tagged today, quota may happen to still be
-	// available (e.g. the very first video ever), but it was NOT staged in
+	// available (e.g. the very first video ever), but it was NOT tagged in
 	// a previous period, so this must not auto-advance.
-	freshStagedAt := time.Date(2026, 7, 5, 17, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	freshCategorizedAt := time.Date(2026, 7, 5, 17, 0, 0, 0, randoLocation).Format(time.RFC3339)
 	f := &fakeWatchitlaterClient{current: &watchitlater.Record{
 		Staged: true, VideoID: "vid1", Title: "Fresh Video", Emoji: "✅",
 		VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
-		StagedAt: freshStagedAt,
+		CategorizedAt: freshCategorizedAt,
 	}}
 	h := NewWatchingHandler(f)
 	h.Now = func() time.Time { return time.Date(2026, 7, 5, 18, 0, 0, 0, randoLocation) }
@@ -208,6 +228,45 @@ func TestWatchingServeHTTP_DoesNotAutoAdvanceFreshTaggedVideo(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
 	if !strings.Contains(body["html"], "Fresh Video") {
 		t.Errorf("expected the video's own page, got: %s", body["html"])
+	}
+}
+
+// TestWatchingServeHTTP_AutoAdvancesReplayedHistoryVideo guards against the
+// actual production bug found while smoke-testing "Load watch later
+// videos": re-staging an old, already-tagged video from the history table
+// sets StagedAt to right now, but its tag (CategorizedAt) is from long
+// ago. Before videoIsStaleAndTagged was switched to key off CategorizedAt
+// instead of StagedAt, the fresh StagedAt made a months-old replay look
+// like "tagged today" and get shown on the default view, instead of
+// auto-advancing back to the genuine current/uncategorized video.
+func TestWatchingServeHTTP_AutoAdvancesReplayedHistoryVideo(t *testing.T) {
+	longAgoCategorizedAt := time.Date(2018, 11, 28, 12, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	justNowStagedAt := time.Date(2026, 7, 5, 17, 59, 0, 0, randoLocation).Format(time.RFC3339)
+	f := &fakeWatchitlaterClient{
+		current: &watchitlater.Record{
+			Staged: true, VideoID: "vid1", Title: "Walking Bass Line Formula", Emoji: "🎸",
+			VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+			StagedAt: justNowStagedAt, CategorizedAt: longAgoCategorizedAt,
+		},
+		status: &watchitlater.NextStatus{},
+	}
+	h := NewWatchingHandler(f)
+	h.Now = func() time.Time { return time.Date(2026, 7, 5, 18, 0, 0, 0, randoLocation) }
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !f.reconcileCall {
+		t.Error("expected Reconcile to be called to advance past the replayed history video")
+	}
+	if f.startNextCall {
+		t.Error("expected StartNext NOT to be called — today's real video already consumed the daily quota, so getting back to it must not go through the gated path")
+	}
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if strings.Contains(body["html"], "Walking Bass Line Formula") {
+		t.Errorf("expected the fetching state, not the replayed video's own page: %s", body["html"])
 	}
 }
 
@@ -241,12 +300,12 @@ func TestWatchingServeHTTP_DoesNotAutoAdvanceStaleUntaggedVideo(t *testing.T) {
 }
 
 func TestWatchingServeHTTP_StaleTaggedVideoRespectsAlreadyRunningJob(t *testing.T) {
-	staleStagedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	staleCategorizedAt := time.Date(2026, 7, 4, 20, 0, 0, 0, randoLocation).Format(time.RFC3339)
 	f := &fakeWatchitlaterClient{
 		current: &watchitlater.Record{
 			Staged: true, VideoID: "vid1", Title: "Old Video", Emoji: "✅",
 			VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
-			StagedAt: staleStagedAt,
+			CategorizedAt: staleCategorizedAt,
 		},
 		status: &watchitlater.NextStatus{Running: true},
 	}
@@ -259,6 +318,9 @@ func TestWatchingServeHTTP_StaleTaggedVideoRespectsAlreadyRunningJob(t *testing.
 
 	if f.startNextCall {
 		t.Error("expected no duplicate StartNext while a job is already running")
+	}
+	if f.reconcileCall {
+		t.Error("expected no duplicate Reconcile while a job is already running")
 	}
 }
 
@@ -582,5 +644,87 @@ func TestHandleThumbnail_DelegatesToClient(t *testing.T) {
 
 	if rec.Body.String() != "thumb-bytes" {
 		t.Errorf("body = %q, want thumb-bytes", rec.Body.String())
+	}
+}
+
+func TestHandleHistory_ReturnsVideosFromClient(t *testing.T) {
+	f := &fakeWatchitlaterClient{history: []watchitlater.HistoryRecord{
+		{VideoID: "vid1", Title: "Some Title", Emoji: "🎸", CategorizedAt: "2026-08-01T00:00:00Z"},
+	}}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching/history", nil)
+	rec := httptest.NewRecorder()
+	h.HandleHistory(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Videos []watchitlater.HistoryRecord `json:"videos"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Videos) != 1 || body.Videos[0].VideoID != "vid1" {
+		t.Fatalf("unexpected videos: %+v", body.Videos)
+	}
+}
+
+func TestHandleHistory_UpstreamErrorReturns502(t *testing.T) {
+	f := &fakeWatchitlaterClient{historyErr: errors.New("connection refused")}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching/history", nil)
+	rec := httptest.NewRecorder()
+	h.HandleHistory(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
+	}
+}
+
+func TestHandleStage_DelegatesVideoIDToClient(t *testing.T) {
+	f := &fakeWatchitlaterClient{}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/watching/stage/vid1", nil)
+	req.SetPathValue("videoID", "vid1")
+	rec := httptest.NewRecorder()
+	h.HandleStage(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if f.stagedVideoID != "vid1" {
+		t.Errorf("stagedVideoID = %q, want vid1", f.stagedVideoID)
+	}
+}
+
+func TestHandleStage_MissingVideoID(t *testing.T) {
+	f := &fakeWatchitlaterClient{}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/watching/stage/", nil)
+	req.SetPathValue("videoID", "")
+	rec := httptest.NewRecorder()
+	h.HandleStage(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestHandleStage_UpstreamErrorReturns502(t *testing.T) {
+	f := &fakeWatchitlaterClient{stageVideoErr: errors.New("409 conflict")}
+	h := NewWatchingHandler(f)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/watching/stage/vid1", nil)
+	req.SetPathValue("videoID", "vid1")
+	rec := httptest.NewRecorder()
+	h.HandleStage(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
 	}
 }

@@ -18,10 +18,13 @@ import (
 type WatchitlaterClient interface {
 	Current() (*watchitlater.Record, error)
 	StartNext() error
+	Reconcile() error
 	NextStatus() (*watchitlater.NextStatus, error)
 	SetEmoji(videoID, emoji string) error
 	ProxyVideo(w http.ResponseWriter, r *http.Request) error
 	ProxyThumbnail(w http.ResponseWriter, r *http.Request) error
+	History() ([]watchitlater.HistoryRecord, error)
+	StageVideo(videoID string) error
 }
 
 // WatchingHandler serves the "Watching It Later 👀" section — see
@@ -48,23 +51,30 @@ func NewWatchingHandler(client WatchitlaterClient) *WatchingHandler {
 	return &WatchingHandler{Client: client, Now: time.Now}
 }
 
-// videoIsStaleAndTagged reports whether r was staged in a daily-limit
+// videoIsStaleAndTagged reports whether r was tagged in a daily-limit
 // period before the current one (see handlers/period.go — the same
-// Europe/London, 4pm-reset boundary Rando already uses) and has been
-// tagged. Both conditions matter: a stale-but-untagged video must stay put
-// (the user still has to categorise it — see 03.05), and a
-// freshly-staged-but-tagged video (e.g. the very first video ever, where
-// the daily limit happens to still be available) must not be whisked away
-// on the next reload just because DailyLimitReached happens to read false.
+// Europe/London, 4pm-reset boundary Rando already uses). Both "has an
+// emoji" and "tagged before this period" matter: an untagged video must
+// stay put however old it is (the user still has to categorise it — see
+// 03.05), and a video tagged earlier today (e.g. the very first video
+// ever, where the daily limit happens to still be available) must not be
+// whisked away on the next reload just because DailyLimitReached happens
+// to read false.
+//
+// Deliberately keyed on CategorizedAt rather than StagedAt: re-staging an
+// old, already-tagged video from history ("Load watch later videos")
+// updates StagedAt to right now, which would otherwise make a video
+// someone tagged months ago look "fresh" and get shown instead of
+// auto-advancing back to the actual next uncategorized video.
 func (h *WatchingHandler) videoIsStaleAndTagged(r *watchitlater.Record) bool {
-	if r.Emoji == "" || r.StagedAt == "" {
+	if r.Emoji == "" || r.CategorizedAt == "" {
 		return false
 	}
-	stagedAt, err := time.Parse(time.RFC3339, r.StagedAt)
+	categorizedAt, err := time.Parse(time.RFC3339, r.CategorizedAt)
 	if err != nil {
 		return false
 	}
-	return !currentPeriodStart(stagedAt).Equal(currentPeriodStart(h.Now()))
+	return !currentPeriodStart(categorizedAt).Equal(currentPeriodStart(h.Now()))
 }
 
 // ServeHTTP serves GET /api/watching — mirrors ClippedHandler/RandoHandler's
@@ -94,9 +104,10 @@ func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		// Either nothing is staged (first-ever use, or mid-fetch — see the
 		// comment above), or what's staged is a stale, already-tagged
-		// video from a previous daily-limit period: advance automatically
-		// instead of making the user click "Get Next Video" for a video
-		// they've already dealt with.
+		// video (from a previous daily-limit period, or an old video just
+		// replayed from history): advance automatically instead of making
+		// the user click "Get Next Video" for a video they've already
+		// dealt with.
 		status, err := h.Client.NextStatus()
 		if err != nil {
 			writeJSONError(w, http.StatusBadGateway, "failed to check watchitlater status")
@@ -108,7 +119,20 @@ func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case status.Running:
 			body = fetchingHTML()
 		default:
-			if err := h.Client.StartNext(); err != nil {
+			// record.Staged means we're here because of staleness, not a
+			// genuinely empty slot — that's a correction back to the video
+			// that was already legitimately current, not "give me a new
+			// video," so it must go through Reconcile (no daily-quota
+			// gate) rather than StartNext, which would otherwise 409 if
+			// today's allowance was already spent staging that same video
+			// in the first place.
+			var startErr error
+			if record.Staged {
+				startErr = h.Client.Reconcile()
+			} else {
+				startErr = h.Client.StartNext()
+			}
+			if startErr != nil {
 				writeJSONError(w, http.StatusBadGateway, "failed to start fetching a video")
 				return
 			}
@@ -192,6 +216,38 @@ func (h *WatchingHandler) HandleNextStatus(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status) //nolint:errcheck
+}
+
+// HandleHistory serves GET /api/watching/history — every previously
+// categorized video, most recently categorized first, for "Load watch
+// later videos" (main-randoread.md 05.02.03): clicking the "Watching it
+// Later 👀" header (mirrors the Clippings breadcrumb link) shows this as a
+// table, and clicking a row's title re-stages that video via HandleStage.
+func (h *WatchingHandler) HandleHistory(w http.ResponseWriter, r *http.Request) {
+	videos, err := h.Client.History()
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "failed to reach watchitlater")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"videos": videos}) //nolint:errcheck
+}
+
+// HandleStage serves POST /api/watching/stage/{videoID} — proxies to
+// tools-watchitlater's re-stage endpoint (fire-and-forget; poll
+// HandleNextStatus for progress, same as HandleNext).
+func (h *WatchingHandler) HandleStage(w http.ResponseWriter, r *http.Request) {
+	videoID := r.PathValue("videoID")
+	if videoID == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing video ID")
+		return
+	}
+	if err := h.Client.StageVideo(videoID); err != nil {
+		writeJSONError(w, http.StatusBadGateway, "failed to stage video")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "started"}) //nolint:errcheck
 }
 
 // HandleVideo serves GET /api/watching/video — streams the staged video's

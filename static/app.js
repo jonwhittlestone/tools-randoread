@@ -66,8 +66,18 @@
   // article you came from.
   const CLIPPINGS_BREADCRUMB_PREFIX = "Clippings / ";
 
+  // Same breadcrumb idea as Clippings, but Watching It Later's title never
+  // has a "/ {video}" suffix — it's always exactly this literal string (see
+  // handlers/watching.go's ServeHTTP) — so an exact match is enough, no
+  // prefix-stripping needed (main-randoread.md 05.02.03).
+  const WATCHING_TITLE = "Watching it Later 👀";
+
   function renderTitle(title) {
     noteTitle.innerHTML = "";
+    if (title === WATCHING_TITLE) {
+      noteTitle.appendChild(watchingBreadcrumbLink());
+      return;
+    }
     if (!title.startsWith(CLIPPINGS_BREADCRUMB_PREFIX)) {
       noteTitle.textContent = title;
       return;
@@ -317,6 +327,13 @@
       return;
     }
 
+    const historyVideoLink = event.target.closest(".watching-history-video-link");
+    if (historyVideoLink) {
+      event.preventDefault();
+      stageHistoryVideo(historyVideoLink.dataset.videoId);
+      return;
+    }
+
     const emojiBtn = event.target.closest(".watching-emoji-btn");
     if (!emojiBtn) return;
 
@@ -479,6 +496,124 @@
     },
   };
 
+  // main-randoread.md 05.02.03 — mirrors clippingsBreadcrumbLink/
+  // clippingsList's shape exactly: the section title becomes a breadcrumb
+  // link to an index table, clicking a row loads that specific item back
+  // into the single-item view.
+  function watchingBreadcrumbLink() {
+    const link = document.createElement("a");
+    link.href = "#watching-history";
+    link.id = "watching-breadcrumb-link";
+    link.className = "breadcrumb-link";
+    link.textContent = WATCHING_TITLE;
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      watchingHistory.load();
+    });
+    return link;
+  }
+
+  const watchingHistory = {
+    async load() {
+      window.history.replaceState(null, "", "#watching-history");
+      // Leaving the single-video view — any "Get Next Video"/stage progress
+      // poll for that view is no longer relevant to what's on screen.
+      stopWatchingPoll();
+
+      noteTitle.innerHTML = "";
+      const link = watchingBreadcrumbLink();
+      noteTitle.appendChild(link);
+      const stopAnimation = animateEllipsis(link, WATCHING_TITLE);
+
+      try {
+        const res = await authedFetch("api/watching/history");
+        const data = await res.json();
+        stopAnimation();
+
+        if (!res.ok) {
+          noteContent.textContent = data.error || "Failed to load watching history.";
+          return;
+        }
+        renderWatchingHistoryTable(data.videos);
+      } catch (e) {
+        stopAnimation();
+        noteContent.textContent = "Failed to load watching history.";
+      }
+    },
+  };
+
+  // Only the date portion of an RFC3339 timestamp — matches the single-video
+  // view's own restraint around dates (Downloaded/Uploaded are shown raw,
+  // no time-of-day formatting library pulled in for either).
+  function dateOnly(rfc3339) {
+    return rfc3339 ? rfc3339.slice(0, 10) : "";
+  }
+
+  function renderWatchingHistoryTable(videos) {
+    noteContent.innerHTML = "";
+
+    if (!videos || videos.length === 0) {
+      noteContent.textContent = "No categorized videos yet.";
+      return;
+    }
+
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    thead.innerHTML = "<tr><th>Categorized</th><th>Title</th></tr>";
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const v of videos) {
+      const tr = document.createElement("tr");
+
+      const tdDate = document.createElement("td");
+      tdDate.textContent = dateOnly(v.categorizedAt);
+
+      const tdTitle = document.createElement("td");
+      const link = document.createElement("a");
+      link.href = "#";
+      link.className = "watching-history-video-link";
+      link.dataset.videoId = v.videoID;
+      link.textContent = v.emoji ? v.emoji + " " + v.title : v.title;
+      link.title = "Downloaded: " + (v.downloadedAt || "unknown") + "\nUploaded: " + (v.uploadedAt || "unknown");
+      tdTitle.appendChild(link);
+
+      tr.append(tdDate, tdTitle);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    noteContent.appendChild(table);
+  }
+
+  // Re-downloads/stages videoID (from the history table) as the current
+  // video, then reuses the exact same progress-polling UI "Get Next Video"
+  // already uses. Renders the fetching shell directly (matching Go's
+  // fetchingHTML in handlers/watching.go byte-for-byte) rather than calling
+  // watching.load(), since whatever's currently staged (if anything) isn't
+  // this video yet and would otherwise flash on screen first.
+  async function stageHistoryVideo(videoID) {
+    setActiveMode("watching");
+    renderTitle(WATCHING_TITLE);
+    noteContent.innerHTML =
+      '<div class="watching"><p>Fetching a video…</p>' +
+      '<div class="watching-progress"><div class="watching-progress-bar"></div><span class="watching-progress-label"></span></div>' +
+      "</div>";
+
+    try {
+      const res = await authedFetch("api/watching/stage/" + encodeURIComponent(videoID), { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        noteContent.textContent = data.error || "Failed to load video.";
+        return;
+      }
+      showWatchingProgress(0, "Starting…");
+      startWatchingPoll();
+    } catch (e) {
+      noteContent.textContent = "Failed to load video: " + e.message;
+    }
+  }
+
   function storedTokenIsValid() {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY);
     const expiresAt = localStorage.getItem(STORAGE_EXPIRES_KEY);
@@ -530,6 +665,8 @@
       clippingsList.load();
     } else if (hash === "watching") {
       watching.load();
+    } else if (hash === "watching-history") {
+      watchingHistory.load();
     } else {
       loadDaily();
     }
