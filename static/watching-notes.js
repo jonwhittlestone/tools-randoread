@@ -93,6 +93,13 @@
   // the delegated click handler can tell "known reference link" apart from
   // an ordinary external link (e.g. the note's YouTube/source URL).
   var referencePaths = new WeakMap();
+  // Whichever note is currently shown — the video's own note (isMain: true,
+  // in .watching-notes-body) or a related note reached via a reference
+  // link (isMain: false, in .watching-notes-preview). Edit/Save act on
+  // whichever this is (main-randoread.md 05.02.02: "the edit button should
+  // allow markdown editing of any content in the note content area") —
+  // see enterEditMode/doSave.
+  var activeNote = new WeakMap();
 
   function renderReferences(panel, references) {
     var els = panelEls(panel);
@@ -129,9 +136,10 @@
 
   function fillPanel(panel, data) {
     var els = panelEls(panel);
-    panel.dataset.path = data.path || "";
-    panel.dataset.raw = data.raw || "";
+    activeNote.set(panel, { path: data.path, raw: data.raw, isMain: true });
     els.body.innerHTML = data.html || "";
+    els.preview.classList.add("hidden");
+    els.body.classList.remove("hidden");
     renderReferences(panel, data.references);
     // Edit/Link only make sense once we actually know the note's current
     // content — showing them earlier let a fast click into Edit start from
@@ -171,10 +179,13 @@
   // (rather than just re-showing whatever's already in memory) and drops
   // back out of any open related-note preview.
   function refreshMainNote(panel) {
-    var els = panelEls(panel);
-    els.preview.classList.add("hidden");
-    els.body.textContent = "Loading…";
-    fetchAndFillMain(panel);
+    closeEditorIfOpen(panel).then(function () {
+      var els = panelEls(panel);
+      els.preview.classList.add("hidden");
+      els.body.classList.remove("hidden");
+      els.body.textContent = "Loading…";
+      fetchAndFillMain(panel);
+    });
   }
 
   function wireEditor(panel) {
@@ -237,23 +248,39 @@
   function doSave(panel) {
     var els = panelEls(panel);
     var content = els.textarea.value;
+    var active = activeNote.get(panel) || {};
+    var editingRelated = active.isMain === false;
     pendingContent.set(panel, null);
     setSaveStatus(panel, "Saving…");
 
-    return fetchJSON("api/watching/note", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: content }),
-    }).then(function (r) {
-      if (!r.ok) {
+    var request = editingRelated
+      ? fetchJSON("api/watching/note/related-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: active.path, content: content }),
+        })
+      : fetchJSON("api/watching/note", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: content }),
+        });
+
+    return request
+      .then(function (r) {
+        if (!r.ok) {
+          setSaveStatus(panel, "Failed to save");
+          return;
+        }
+        if (editingRelated) {
+          showRelatedNote(panel, r.data);
+        } else {
+          fillPanel(panel, r.data);
+        }
+        setSaveStatus(panel, "Saved ✓ " + nowLabel());
+      })
+      .catch(function () {
         setSaveStatus(panel, "Failed to save");
-        return;
-      }
-      fillPanel(panel, r.data);
-      setSaveStatus(panel, "Saved ✓ " + nowLabel());
-    }).catch(function () {
-      setSaveStatus(panel, "Failed to save");
-    });
+      });
   }
 
   function vimActive(panel) {
@@ -279,22 +306,41 @@
 
   function enterEditMode(panel) {
     var els = panelEls(panel);
-    els.textarea.value = panel.dataset.raw || "";
+    var active = activeNote.get(panel) || {};
+    els.textarea.value = active.raw || "";
     els.editorWrap.classList.remove("hidden");
     els.body.classList.add("hidden");
+    els.preview.classList.add("hidden");
     els.editBtn.classList.add("hidden");
     els.doneBtn.classList.remove("hidden");
     els.textarea.focus();
   }
 
-  function exitEditMode(panel) {
-    flushSave(panel).then(function () {
-      var els = panelEls(panel);
+  // Shared by exitEditMode (Done click) and by refreshMainNote/
+  // toggleRelatedPreview switching the visible pane while the editor
+  // happens to be open (e.g. clicking "main" mid-edit) — in both cases the
+  // editor needs to close (flushing any pending edit) before something else
+  // takes over the content area. Resolves immediately if it wasn't open.
+  function closeEditorIfOpen(panel) {
+    var els = panelEls(panel);
+    if (els.editorWrap.classList.contains("hidden")) return Promise.resolve();
+    return flushSave(panel).then(function () {
       if (vimActive(panel)) toggleVim(panel);
       els.editorWrap.classList.add("hidden");
-      els.body.classList.remove("hidden");
       els.editBtn.classList.remove("hidden");
       els.doneBtn.classList.add("hidden");
+    });
+  }
+
+  function exitEditMode(panel) {
+    closeEditorIfOpen(panel).then(function () {
+      var els = panelEls(panel);
+      var active = activeNote.get(panel) || {};
+      if (active.isMain === false) {
+        els.preview.classList.remove("hidden");
+      } else {
+        els.body.classList.remove("hidden");
+      }
     });
   }
 
@@ -334,28 +380,46 @@
       .catch(function () {});
   }
 
-  function toggleRelatedPreview(panel, path) {
+  // Records data as the panel's active (editable) note and shows its
+  // rendered HTML in the preview pane. Shared by toggleRelatedPreview's
+  // initial fetch and by doSave's related-note save path (which already has
+  // the freshly-saved html/raw and shouldn't need a second round trip).
+  function showRelatedNote(panel, data) {
     var els = panelEls(panel);
-    if (els.preview.dataset.path === path && !els.preview.classList.contains("hidden")) {
-      els.preview.classList.add("hidden");
+    activeNote.set(panel, { path: data.path, raw: data.raw, isMain: false });
+    els.preview.innerHTML = data.html || "";
+  }
+
+  // fix 2/3 (05.02.02): a related note *replaces* the video's own note in
+  // the content area (hides .watching-notes-body, shows
+  // .watching-notes-preview in its place) rather than stacking a second box
+  // above it — found live: showing both simultaneously read as the related
+  // note's content having been "prepended" onto the main note's.
+  function toggleRelatedPreview(panel, path) {
+    var active = activeNote.get(panel) || {};
+    if (active.isMain === false && active.path === path) {
+      refreshMainNote(panel);
       return;
     }
 
-    els.preview.classList.remove("hidden");
-    els.preview.dataset.path = path;
-    els.preview.textContent = "Loading…";
+    closeEditorIfOpen(panel).then(function () {
+      var els = panelEls(panel);
+      els.body.classList.add("hidden");
+      els.preview.classList.remove("hidden");
+      els.preview.textContent = "Loading…";
 
-    fetchJSON("api/watching/note/related-preview?path=" + encodeURIComponent(path))
-      .then(function (r) {
-        if (!r.ok) {
-          els.preview.textContent = r.data.error || "Failed to load note.";
-          return;
-        }
-        els.preview.innerHTML = r.data.html;
-      })
-      .catch(function () {
-        els.preview.textContent = "Failed to load note.";
-      });
+      fetchJSON("api/watching/note/related-preview?path=" + encodeURIComponent(path))
+        .then(function (r) {
+          if (!r.ok) {
+            els.preview.textContent = r.data.error || "Failed to load note.";
+            return;
+          }
+          showRelatedNote(panel, r.data);
+        })
+        .catch(function () {
+          els.preview.textContent = "Failed to load note.";
+        });
+    });
   }
 
   noteContent.addEventListener("click", function (event) {
@@ -457,9 +521,17 @@
     if (content == null) return;
     clearTimeout(saveTimers.get(panel));
 
+    // Mirrors doSave's endpoint choice — a pending edit could belong to
+    // either the video's own note or a related note (see activeNote).
+    var active = activeNote.get(panel) || {};
+    var editingRelated = active.isMain === false;
     var token = localStorage.getItem(STORAGE_TOKEN_KEY);
-    var url = "api/watching/note?token=" + encodeURIComponent(token);
-    var blob = new Blob([JSON.stringify({ content: content })], { type: "application/json" });
+    var url =
+      (editingRelated ? "api/watching/note/related-save" : "api/watching/note") +
+      "?token=" +
+      encodeURIComponent(token);
+    var payload = editingRelated ? { path: active.path, content: content } : { content: content };
+    var blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
     if (navigator.sendBeacon) navigator.sendBeacon(url, blob);
   });
 })();

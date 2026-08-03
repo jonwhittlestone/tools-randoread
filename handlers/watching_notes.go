@@ -325,9 +325,13 @@ func subsequenceScore(title, q string) (int, bool) {
 }
 
 // HandleRelatedPreview serves GET /api/watching/note/related-preview?path= —
-// a read-only inline preview for a related note, so "view those related
-// notes too" doesn't need a whole second navigation mode (see the feature
-// plan). path must be an in-vault .md file.
+// an inline preview for a related note, so "view those related notes too"
+// doesn't need a whole second navigation mode (see the feature plan). Also
+// returns raw/path so the frontend can drop a related note into the same
+// Edit flow as the video's own note (main-randoread.md 05.02.02: "the edit
+// button should allow markdown editing of any content in the note content
+// area") — see HandleSaveRelated for where an edit gets written back.
+// path must be an in-vault .md file.
 func (h *WatchingNotesHandler) HandleRelatedPreview(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if !isValidVaultNotePath(path, h.VaultRoot) {
@@ -342,7 +346,48 @@ func (h *WatchingNotesHandler) HandleRelatedPreview(w http.ResponseWriter, r *ht
 	}
 
 	html := markdown.Render(data, vaultFileResolver(h.VaultLister, h.VaultRoot, h.AuthToken))
-	writeJSON(w, map[string]string{"html": html, "title": note.FormatVaultTitle(path, h.VaultRoot)})
+	writeJSON(w, map[string]string{
+		"html":  html,
+		"raw":   string(data),
+		"path":  path,
+		"title": note.FormatVaultTitle(path, h.VaultRoot),
+	})
+}
+
+// HandleSaveRelated serves POST /api/watching/note/related-save — saves an
+// edit to a related note reached via a reference link or "Linking to
+// existing note", as opposed to HandleSave which always targets the
+// currently staged video's own note. Not restricted to notes already listed
+// as a reference: the fuzzy picker backing "Linking to existing note"
+// already lets a user reach (and now edit) any vault note through this same
+// feature, so there's no separate trust boundary to enforce here beyond
+// isValidVaultNotePath's usual in-vault .md check.
+func (h *WatchingNotesHandler) HandleSaveRelated(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if !isValidVaultNotePath(body.Path, h.VaultRoot) {
+		writeJSONError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+
+	if err := h.Dropbox.Upload(body.Path, []byte(body.Content)); err != nil {
+		writeJSONError(w, http.StatusBadGateway, "failed to save note")
+		return
+	}
+
+	html := markdown.Render([]byte(body.Content), vaultFileResolver(h.VaultLister, h.VaultRoot, h.AuthToken))
+	writeJSON(w, map[string]string{
+		"html":  html,
+		"raw":   body.Content,
+		"path":  body.Path,
+		"title": note.FormatVaultTitle(body.Path, h.VaultRoot),
+	})
 }
 
 func isValidVaultNotePath(path, vaultRoot string) bool {

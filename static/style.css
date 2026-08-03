@@ -241,6 +241,15 @@ a:hover {
   border-radius: 4px;
 }
 
+/* A pasted raw <iframe> embed (e.g. a YouTube embed copied at its default
+   1440x1000-ish size) otherwise overflows the content column — found live
+   in a Watching Notes related-note preview (main-randoread.md 05.02.02).
+   height isn't auto-corrected (iframes have no intrinsic aspect ratio the
+   way <img> does), but this at least stops the horizontal overflow. */
+#note-content iframe {
+  max-width: 100%;
+}
+
 /* ── Video embeds (collapsible — see the .video-toggle handler in app.js) ── */
 
 #note-content .video-embed {
@@ -563,16 +572,13 @@ a:hover {
   color: var(--h2);
 }
 
-.watching-notes-preview {
-  margin: 8px 0;
-  padding: 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
 /* fix 2.1: clearer border, distinct background, fixed height (scrolls
-   internally) so the panel doesn't jump around in height per note. */
+   internally) so the panel doesn't jump around in height per note. Shared
+   by body and preview — they're mutually exclusive views of the same "note
+   content area" (only one is ever visible at a time — see
+   watching-notes.js's toggleRelatedPreview/refreshMainNote), so they read
+   as one consistent surface rather than two differently-styled boxes. */
+.watching-notes-preview,
 .watching-notes-body {
   height: 400px;
   overflow-y: auto;
