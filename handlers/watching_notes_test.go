@@ -294,6 +294,15 @@ func TestHandleRelatedPreview_RendersReadOnly(t *testing.T) {
 	if !strings.Contains(body["html"], "Jazz Standards") {
 		t.Errorf("expected rendered preview html, got %q", body["html"])
 	}
+	// raw/path let the frontend drop a related note into the same Edit flow
+	// as the video's own note (main-randoread.md 05.02.02, "edit if
+	// necessary") — see HandleSaveRelated.
+	if body["raw"] != "# Jazz Standards\n\nSome content." {
+		t.Errorf("expected raw markdown for editing, got %q", body["raw"])
+	}
+	if body["path"] != relatedPath {
+		t.Errorf("expected path %q, got %q", relatedPath, body["path"])
+	}
 }
 
 func TestHandleRelatedPreview_RejectsPathOutsideVault(t *testing.T) {
@@ -312,5 +321,75 @@ func TestHandleRelatedPreview_RejectsPathOutsideVault(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("path %q: expected 400, got %d", badPath, rec.Code)
 		}
+	}
+}
+
+func TestHandleSaveRelated_SavesAndRendersAtGivenPath(t *testing.T) {
+	// Unlike HandleSave, this doesn't touch the currently staged video's own
+	// note at all — no fakeWatchitlaterClient staged record is even needed.
+	dbx := newFakeNotesDropbox(testVaultRoot)
+	relatedPath := testVaultRoot + "/music/piano/jazz-standards-and-progressions.md"
+	dbx.files[relatedPath] = []byte("# Jazz Standards\n\nOld content.")
+	h := newTestNotesHandler(nil, dbx)
+
+	body := `{"path":"` + relatedPath + `","content":"# Jazz Standards\n\nEdited content."}`
+	req := httptest.NewRequest(http.MethodPost, "/api/watching/note/related-save", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.HandleSaveRelated(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := string(dbx.files[relatedPath]); got != "# Jazz Standards\n\nEdited content." {
+		t.Errorf("expected the related note to be overwritten in place, got %q", got)
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp["path"] != relatedPath {
+		t.Errorf("expected path %q, got %q", relatedPath, resp["path"])
+	}
+	if resp["raw"] != "# Jazz Standards\n\nEdited content." {
+		t.Errorf("expected raw to echo the saved content, got %q", resp["raw"])
+	}
+	if !strings.Contains(resp["html"], "Edited content") {
+		t.Errorf("expected re-rendered html reflecting the edit, got %q", resp["html"])
+	}
+}
+
+func TestHandleSaveRelated_RejectsPathOutsideVault(t *testing.T) {
+	dbx := newFakeNotesDropbox(testVaultRoot)
+	h := newTestNotesHandler(nil, dbx)
+
+	for _, badPath := range []string{
+		"/etc/passwd",
+		testVaultRoot + "/../secret.md",
+		testVaultRoot + "/notes.txt",
+	} {
+		body := `{"path":"` + badPath + `","content":"pwned"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/watching/note/related-save", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		h.HandleSaveRelated(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("path %q: expected 400, got %d", badPath, rec.Code)
+		}
+		if _, wrote := dbx.files[badPath]; wrote {
+			t.Errorf("path %q: must not have been written to Dropbox", badPath)
+		}
+	}
+}
+
+func TestHandleSaveRelated_RejectsInvalidJSON(t *testing.T) {
+	dbx := newFakeNotesDropbox(testVaultRoot)
+	h := newTestNotesHandler(nil, dbx)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/watching/note/related-save", strings.NewReader("not json"))
+	rec := httptest.NewRecorder()
+	h.HandleSaveRelated(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

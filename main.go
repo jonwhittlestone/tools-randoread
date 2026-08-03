@@ -186,6 +186,7 @@ func newMux(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/watching/note/search", watchingNotesHandler.HandleSearch)
 	mux.HandleFunc("POST /api/watching/note/related", watchingNotesHandler.HandleAddRelated)
 	mux.HandleFunc("GET /api/watching/note/related-preview", watchingNotesHandler.HandleRelatedPreview)
+	mux.HandleFunc("POST /api/watching/note/related-save", watchingNotesHandler.HandleSaveRelated)
 
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
