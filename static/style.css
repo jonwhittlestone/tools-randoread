@@ -985,12 +985,20 @@ a:hover {
 }
 
 .journal-modal-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 20px;
   border-radius: 6px;
   border: none;
   font-size: 14px;
   font-family: inherit;
   cursor: pointer;
+}
+
+.journal-modal-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .journal-modal-btn.cancel {

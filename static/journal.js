@@ -143,7 +143,10 @@
     '<pre class="journal-modal-insertion"></pre>' +
     '<div class="journal-modal-actions">' +
     '<button type="button" class="journal-modal-btn cancel">Don’t update and close</button>' +
-    '<button type="button" class="journal-modal-btn ok">OK</button>' +
+    '<button type="button" class="journal-modal-btn ok">' +
+    '<span class="journal-spinner hidden"></span>' +
+    '<span class="journal-modal-ok-label">OK</span>' +
+    "</button>" +
     "</div>" +
     "</div>";
   document.body.appendChild(overlay);
@@ -152,6 +155,14 @@
   var modalInsertion = overlay.querySelector(".journal-modal-insertion");
   var modalCancelBtn = overlay.querySelector(".cancel");
   var modalOkBtn = overlay.querySelector(".ok");
+  var modalOkSpinner = modalOkBtn.querySelector(".journal-spinner");
+  var modalOkLabel = modalOkBtn.querySelector(".journal-modal-ok-label");
+
+  function setApplying(applying) {
+    modalOkBtn.disabled = applying;
+    modalOkSpinner.classList.toggle("hidden", !applying);
+    modalOkLabel.textContent = applying ? "Saving…" : "OK";
+  }
 
   var pendingDraft = null; // {heading, insertionMarkdown, reply, nowIso} awaiting confirm
 
@@ -198,12 +209,24 @@
     if (!noteContent || !window.setHeadingFolded) return;
     var targetText = stripMarkdownHeading(headingMarkdown);
 
-    var observer = new MutationObserver(function () {
+    // app.js's loadDaily clears #note-content to empty synchronously
+    // *before* the async fetch for the real content resolves — a
+    // childList observer fires on that clear too, as its own, earlier
+    // mutation record. Disconnecting on the first callback (rather than
+    // waiting for one that actually contains headings) meant this fired
+    // on the empty interim state and never saw the real content — the
+    // fold/scroll effect silently never ran, even though the reload and
+    // the write it followed both succeeded normally.
+    var giveUp = setTimeout(function () {
       observer.disconnect();
+    }, 10000);
 
+    var observer = new MutationObserver(function () {
       var headings = Array.prototype.slice.call(
         noteContent.querySelectorAll("h1, h2, h3, h4, h5, h6"),
       );
+      if (headings.length === 0) return; // still the cleared interim state — keep waiting
+
       var targetIdx = -1;
       for (var i = 0; i < headings.length; i++) {
         if (renderedHeadingText(headings[i]) === targetText) {
@@ -211,7 +234,16 @@
           break;
         }
       }
-      if (targetIdx === -1) return; // couldn't match — leave the note as rendered
+      if (targetIdx === -1) {
+        // Real content arrived but the heading wasn't found (shouldn't
+        // normally happen) — give up rather than keep watching forever.
+        clearTimeout(giveUp);
+        observer.disconnect();
+        return;
+      }
+
+      clearTimeout(giveUp);
+      observer.disconnect();
 
       var keepExpanded = headings[targetIdx];
       for (var j = targetIdx; j >= 0; j--) {
@@ -235,7 +267,7 @@
   modalOkBtn.addEventListener("click", function () {
     if (!pendingDraft) return;
     var draft = pendingDraft;
-    modalOkBtn.disabled = true;
+    setApplying(true);
 
     fetchJSONWithRetry("api/journal/apply", {
       method: "POST",
@@ -250,7 +282,7 @@
       }),
     })
       .then(function (result) {
-        modalOkBtn.disabled = false;
+        setApplying(false);
         if (!result.ok) {
           modalReply.textContent = result.data.error || "Failed to update the note.";
           return;
@@ -262,7 +294,7 @@
         }
       })
       .catch(function () {
-        modalOkBtn.disabled = false;
+        setApplying(false);
         modalReply.textContent = "Failed to update the note.";
       });
   });
