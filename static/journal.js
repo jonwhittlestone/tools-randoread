@@ -113,7 +113,11 @@
 
   bar.innerHTML =
     '<button type="button" class="journal-attach-btn" title="Attach a photo">📎</button>' +
-    '<input type="file" class="journal-image-input hidden" accept="image/*" capture="environment">' +
+    // No `capture` attribute — that forces straight to the camera on
+    // mobile, skipping past the picker. Plain accept="image/*" lets the
+    // browser show its normal chooser (camera / gallery / files), same as
+    // desktop.
+    '<input type="file" class="journal-image-input hidden" accept="image/*">' +
     '<input type="text" class="journal-input" placeholder="' + defaultPlaceholder + '">' +
     '<button type="button" class="journal-send-btn">' +
     '<span class="journal-spinner hidden"></span>' +
