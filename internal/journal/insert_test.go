@@ -18,6 +18,27 @@ func TestInsertUnderHeading_LastSectionEOF(t *testing.T) {
 	}
 }
 
+func TestInsertUnderHeading_MultiLineInsertionWithSubList(t *testing.T) {
+	// A bare-URL journal fragment gets link metadata as a tab-indented
+	// sub-list under the bullet (groups/journal-draft/CLAUDE.md) —
+	// insertionMarkdown itself contains embedded newlines in that case.
+	// strings.Join treats each element of the line slice as opaque, so a
+	// multi-line insertion should come through with its internal newlines
+	// intact rather than each sub-line needing separate handling.
+	raw := "## 📌 etc.\n\n- \n\n\n"
+	multiLine := "- `11:12`: https://example.com/article\n\t- title: An Article\n\t- author: [[Some Author]]"
+
+	got, err := InsertUnderHeading(raw, "## 📌 etc.", multiLine)
+	if err != nil {
+		t.Fatalf("InsertUnderHeading() error = %v", err)
+	}
+
+	want := "## 📌 etc.\n\n- \n" + multiLine + "\n\n\n"
+	if got != want {
+		t.Errorf("InsertUnderHeading() =\n%q\nwant\n%q", got, want)
+	}
+}
+
 func TestInsertUnderHeading_BoundedByThematicBreak(t *testing.T) {
 	raw := "## 🥇Small Victories\n\n...\n\n---\n## 🗨 Log\n"
 
