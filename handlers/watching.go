@@ -89,16 +89,25 @@ func (h *WatchingHandler) videoIsStaleAndTagged(r *watchitlater.Record) bool {
 // concurrent start, which would otherwise surface here as a spurious 502),
 // so NextStatus is checked first to tell "already fetching" and "nothing
 // left to categorize" apart from "truly never started."
+//
+// A "skipStaleCheck=1" query param bypasses videoIsStaleAndTagged entirely
+// — set by app.js only for the one follow-up load right after
+// stageHistoryVideo's own staging job finishes. Every history video is, by
+// definition, already tagged, so without this, the moment that load
+// finished it would immediately look "stale and tagged" by the exact same
+// check that (correctly) auto-advances a genuinely stale default view —
+// silently replacing the video the user just deliberately picked.
 func (h *WatchingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	record, err := h.Client.Current()
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "failed to reach watchitlater")
 		return
 	}
+	skipStaleCheck := r.URL.Query().Get("skipStaleCheck") == "1"
 
 	var body, titleRight string
 	switch {
-	case record.Staged && !h.videoIsStaleAndTagged(record):
+	case record.Staged && (skipStaleCheck || !h.videoIsStaleAndTagged(record)):
 		body = recordHTML(record, h.AuthToken)
 		titleRight = nextFreshVideoLabel(record)
 	default:

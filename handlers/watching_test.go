@@ -270,6 +270,42 @@ func TestWatchingServeHTTP_AutoAdvancesReplayedHistoryVideo(t *testing.T) {
 	}
 }
 
+// TestWatchingServeHTTP_SkipStaleCheckShowsReplayedVideoAsIs guards against
+// the actual production bug found right after the fix above shipped: every
+// history video is, by definition, already tagged, so the very next poll
+// after stageHistoryVideo's own staging job finished immediately looked
+// "stale and tagged" by this exact same check — silently replacing the
+// video the user just deliberately picked from history with whatever else
+// was actually next in the uncategorized queue. skipStaleCheck=1 is what
+// app.js now passes for that one follow-up load only.
+func TestWatchingServeHTTP_SkipStaleCheckShowsReplayedVideoAsIs(t *testing.T) {
+	longAgoCategorizedAt := time.Date(2018, 11, 28, 12, 0, 0, 0, randoLocation).Format(time.RFC3339)
+	justNowStagedAt := time.Date(2026, 7, 5, 17, 59, 0, 0, randoLocation).Format(time.RFC3339)
+	f := &fakeWatchitlaterClient{
+		current: &watchitlater.Record{
+			Staged: true, VideoID: "vid1", Title: "Walking Bass Line Formula", Emoji: "🎸",
+			VideoURL: "api/watching/video", ThumbnailURL: "api/watching/thumbnail",
+			StagedAt: justNowStagedAt, CategorizedAt: longAgoCategorizedAt,
+		},
+		status: &watchitlater.NextStatus{},
+	}
+	h := NewWatchingHandler(f)
+	h.Now = func() time.Time { return time.Date(2026, 7, 5, 18, 0, 0, 0, randoLocation) }
+
+	req := httptest.NewRequest(http.MethodGet, "/api/watching?skipStaleCheck=1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if f.reconcileCall || f.startNextCall {
+		t.Error("expected no reconcile/advance when skipStaleCheck=1 — the user just deliberately picked this video")
+	}
+	var body map[string]string
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if !strings.Contains(body["html"], "Walking Bass Line Formula") {
+		t.Errorf("expected the replayed video's own page, got: %s", body["html"])
+	}
+}
+
 func TestWatchingServeHTTP_DoesNotAutoAdvanceStaleUntaggedVideo(t *testing.T) {
 	// Per explicit instruction: even if 24h has elapsed, an uncategorised
 	// video must NOT auto-advance — the user has to tag it first.

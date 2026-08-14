@@ -206,12 +206,15 @@
   // uses it to kick off progress polling when the response comes back in
   // the "fetching a video" state (see loadWatching below).
   function makeFeature(button, apiPath, label, mode, onLoaded) {
-    async function load() {
+    // querySuffix (e.g. "?skipStaleCheck=1") lets a specific caller vary
+    // the request without every other caller (button clicks, hash
+    // navigation) needing to know or care — see watchingLoadQuery below.
+    async function load(querySuffix) {
       setActiveMode(mode);
       noteTitle.textContent = "Loading…";
       noteContent.innerHTML = "";
       try {
-        const res = await authedFetch(apiPath);
+        const res = await authedFetch(apiPath + (querySuffix || ""));
         const data = await res.json();
         if (!res.ok) {
           noteTitle.textContent = "";
@@ -226,7 +229,7 @@
       }
     }
 
-    button.addEventListener("click", load);
+    button.addEventListener("click", () => load());
     return { load };
   }
 
@@ -237,6 +240,15 @@
   // --- Watching It Later --------------------------------------------------
 
   let watchingPollTimer = null;
+
+  // Passed through to watching.load() once the in-flight job's poll
+  // reports done — "?skipStaleCheck=1" only for the one follow-up load
+  // right after stageHistoryVideo's own job finishes (see there for why:
+  // every history video is already tagged, so the normal staleness check
+  // would otherwise immediately replace it with something else). Reset to
+  // "" by startWatchingPoll itself so every other flow (Get Next Video,
+  // the plain Watching It Later button) keeps the normal check.
+  let watchingLoadQuery = "";
 
   function stopWatchingPoll() {
     if (!watchingPollTimer) return;
@@ -283,12 +295,15 @@
     }
     if (data.done) {
       stopWatchingPoll();
-      watching.load();
+      const query = watchingLoadQuery;
+      watchingLoadQuery = "";
+      watching.load(query);
     }
   }
 
   function startWatchingPoll() {
     stopWatchingPoll();
+    watchingLoadQuery = "";
     watchingPollTimer = setInterval(checkWatchingStatus, 1000);
   }
 
@@ -609,6 +624,10 @@
       }
       showWatchingProgress(0, "Starting…");
       startWatchingPoll();
+      // Must come after startWatchingPoll(), which resets this to "" —
+      // see watchingLoadQuery's own comment for why this one follow-up
+      // load needs to skip the staleness check.
+      watchingLoadQuery = "?skipStaleCheck=1";
     } catch (e) {
       noteContent.textContent = "Failed to load video: " + e.message;
     }
