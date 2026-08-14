@@ -108,15 +108,23 @@
   // --- Floating bar ---
   var bar = document.createElement("div");
   bar.className = "journal-bar hidden";
+  var defaultPlaceholder = "Tell oh-two something to note down…";
+  var captionPlaceholder = "Add a caption for this photo…";
+
   bar.innerHTML =
-    '<button type="button" class="journal-attach-btn" disabled title="Image attachments coming soon">📎</button>' +
-    '<input type="text" class="journal-input" placeholder="Tell oh-two something to note down…">' +
+    '<button type="button" class="journal-attach-btn" title="Attach a photo">📎</button>' +
+    '<input type="file" class="journal-image-input hidden" accept="image/*" capture="environment">' +
+    '<input type="text" class="journal-input" placeholder="' + defaultPlaceholder + '">' +
     '<button type="button" class="journal-send-btn">' +
     '<span class="journal-spinner hidden"></span>' +
     '<span class="journal-send-label">Send to oh-two</span>' +
     "</button>" +
     '<span class="journal-status"></span>' +
-    '<span class="journal-unavailable-message hidden">oh-two isn’t reachable — doylestone02 may be off the Tailscale network.</span>';
+    '<span class="journal-unavailable-message hidden">oh-two isn’t reachable — doylestone02 may be off the Tailscale network.</span>' +
+    '<div class="journal-image-preview hidden">' +
+    '<img class="journal-image-preview-thumb" alt="">' +
+    '<button type="button" class="journal-image-preview-remove" aria-label="Remove photo">✕</button>' +
+    "</div>";
   document.body.appendChild(bar);
 
   var input = bar.querySelector(".journal-input");
@@ -125,6 +133,47 @@
   var sendLabel = bar.querySelector(".journal-send-label");
   var status = bar.querySelector(".journal-status");
   var unavailableMessage = bar.querySelector(".journal-unavailable-message");
+  var attachBtn = bar.querySelector(".journal-attach-btn");
+  var imageInput = bar.querySelector(".journal-image-input");
+  var imagePreview = bar.querySelector(".journal-image-preview");
+  var imagePreviewThumb = bar.querySelector(".journal-image-preview-thumb");
+  var imagePreviewRemoveBtn = bar.querySelector(".journal-image-preview-remove");
+
+  // The photo itself is only ever uploaded at confirm time (see
+  // journal_apply.go's doc comment on why) — this just holds the picked
+  // File client-side between attach and send.
+  var attachedImageFile = null;
+
+  function clearAttachedImage() {
+    attachedImageFile = null;
+    imageInput.value = "";
+    imagePreview.classList.add("hidden");
+    if (imagePreviewThumb.src) {
+      URL.revokeObjectURL(imagePreviewThumb.src);
+      imagePreviewThumb.src = "";
+    }
+    input.placeholder = defaultPlaceholder;
+  }
+
+  attachBtn.addEventListener("click", function () {
+    imageInput.click();
+  });
+
+  imageInput.addEventListener("change", function () {
+    var file = imageInput.files && imageInput.files[0];
+    if (!file) return;
+    attachedImageFile = file;
+    imagePreviewThumb.src = URL.createObjectURL(file);
+    imagePreview.classList.remove("hidden");
+    // A photo with no caption is exactly what journal_apply.go's mandatory
+    // heading/insertionMarkdown check already blocks (send() below never
+    // allows empty text through) — the placeholder just makes clear why,
+    // rather than requiring a caption silently.
+    input.placeholder = captionPlaceholder;
+    input.focus();
+  });
+
+  imagePreviewRemoveBtn.addEventListener("click", clearAttachedImage);
 
   // sendBtn.disabled has two independent reasons to be true — mid-request
   // (setSending) and NanoClaw unreachable (updateBarVisibility) — compose
@@ -283,17 +332,25 @@
     var draft = pendingDraft;
     setApplying(true);
 
+    // multipart/form-data, not JSON — journal_apply.go accepts an optional
+    // "image" file part alongside the text fields (the photo is uploaded
+    // here, at confirm time, not at draft time — see its doc comment on
+    // why). No Content-Type header set: the browser fills in the correct
+    // multipart boundary itself for a FormData body.
+    var formData = new FormData();
+    formData.append("heading", draft.heading);
+    formData.append("insertionMarkdown", draft.insertionMarkdown);
+    // Same nowIso the matching draft request sent — see journal_apply.go's
+    // resolveNow doc comment on why apply must target the same day draft
+    // did, not re-derive "now" again.
+    formData.append("nowIso", draft.nowIso);
+    if (draft.imageFile) {
+      formData.append("image", draft.imageFile);
+    }
+
     fetchJSONWithRetry("api/journal/apply", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        heading: draft.heading,
-        insertionMarkdown: draft.insertionMarkdown,
-        // Same nowIso the matching draft request sent — see
-        // journal_apply.go's resolveNow doc comment on why apply must
-        // target the same day draft did, not re-derive "now" again.
-        nowIso: draft.nowIso,
-      }),
+      body: formData,
     })
       .then(function (result) {
         setApplying(false);
@@ -316,9 +373,13 @@
   // --- Send ---
   function send() {
     var text = input.value.trim();
+    // A caption is mandatory when a photo is attached — this same empty
+    // check already covers that, no separate validation needed: an
+    // attached image with no text just doesn't send, same as no image.
     if (!text) return;
 
     var nowIso = localIso();
+    var imageFile = attachedImageFile; // captured now — see openModal's comment
     setSending(true);
     status.textContent = "";
 
@@ -341,7 +402,12 @@
         }
         status.textContent = "";
         input.value = "";
-        openModal(Object.assign({}, result.data, { nowIso: nowIso }));
+        // The image itself isn't uploaded until apply — carrying the File
+        // on the draft result here just gets it to that step; clearing the
+        // attach UI now (rather than after apply) lets the next entry
+        // start with a clean slate immediately, same as input.value above.
+        clearAttachedImage();
+        openModal(Object.assign({}, result.data, { nowIso: nowIso, imageFile: imageFile }));
       })
       .catch(function () {
         setSending(false);
@@ -364,6 +430,7 @@
     var dailyActive = dailyButton.classList.contains("active");
     bar.classList.toggle("hidden", !dailyActive);
     input.disabled = !available;
+    attachBtn.disabled = !available;
     refreshSendButtonState();
     unavailableMessage.classList.toggle("hidden", available);
   }
