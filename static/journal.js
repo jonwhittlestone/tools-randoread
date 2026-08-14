@@ -12,13 +12,13 @@
 //
 // Availability: NanoClaw runs on a different host from randoread, reachable
 // only while that host is on the Tailscale network (see main.md §05.05.02
-// "Security"). The bar is hidden entirely, not just disabled, whenever
-// GET /api/journal/status reports unavailable — checked on load and
-// rechecked periodically, since reachability can change after load (dev
-// laptop sleeping/waking, tailnet dropping).
-//
-// Both conditions (Daily active AND available) gate the same "hidden"
-// class — see updateBarVisibility.
+// "Security"). Unlike the Daily-only visibility above, an unavailable
+// NanoClaw does NOT hide the bar — it stays visible with its input/send
+// controls disabled and an explanatory message, so the feature reads as
+// "temporarily unavailable" rather than "doesn't exist here." Checked on
+// load and rechecked periodically, since reachability can change after
+// load (dev laptop sleeping/waking, tailnet dropping) — see
+// updateBarVisibility.
 (function () {
   "use strict";
 
@@ -115,7 +115,8 @@
     '<span class="journal-spinner hidden"></span>' +
     '<span class="journal-send-label">Send to oh-two</span>' +
     "</button>" +
-    '<span class="journal-status"></span>';
+    '<span class="journal-status"></span>' +
+    '<span class="journal-unavailable-message hidden">oh-two isn’t reachable — doylestone02 may be off the Tailscale network.</span>';
   document.body.appendChild(bar);
 
   var input = bar.querySelector(".journal-input");
@@ -123,15 +124,28 @@
   var sendSpinner = bar.querySelector(".journal-spinner");
   var sendLabel = bar.querySelector(".journal-send-label");
   var status = bar.querySelector(".journal-status");
+  var unavailableMessage = bar.querySelector(".journal-unavailable-message");
+
+  // sendBtn.disabled has two independent reasons to be true — mid-request
+  // (setSending) and NanoClaw unreachable (updateBarVisibility) — compose
+  // them here rather than letting whichever ran last clobber the other
+  // (e.g. availability's periodic recheck firing mid-request would
+  // otherwise re-enable a button that's still actually sending).
+  var sending = false;
+
+  function refreshSendButtonState() {
+    sendBtn.disabled = sending || !available;
+  }
 
   // The container spawn NanoClaw does per request genuinely takes several
   // seconds (a real agent turn, not a cheap lookup) — "Thinking…" text
   // alone was too easy to miss, so the button itself shows a spinner for
   // the whole time it's disabled.
-  function setSending(sending) {
-    sendBtn.disabled = sending;
-    sendSpinner.classList.toggle("hidden", !sending);
-    sendLabel.textContent = sending ? "Sending…" : "Send to oh-two";
+  function setSending(isSending) {
+    sending = isSending;
+    refreshSendButtonState();
+    sendSpinner.classList.toggle("hidden", !isSending);
+    sendLabel.textContent = isSending ? "Sending…" : "Send to oh-two";
   }
 
   // --- Confirm modal (same overlay/modal shape as emoji-picker.js) ---
@@ -340,12 +354,18 @@
     if (e.key === "Enter") send();
   });
 
-  // --- Visibility: available (NanoClaw reachable) AND Daily is active ---
+  // --- Visibility: shown whenever Daily is active, regardless of
+  // availability — NanoClaw being unreachable disables the controls and
+  // explains why (below) rather than hiding the bar outright, so the
+  // feature reads as "temporarily unavailable," not "doesn't exist here."
   var available = false;
 
   function updateBarVisibility() {
     var dailyActive = dailyButton.classList.contains("active");
-    bar.classList.toggle("hidden", !(available && dailyActive));
+    bar.classList.toggle("hidden", !dailyActive);
+    input.disabled = !available;
+    refreshSendButtonState();
+    unavailableMessage.classList.toggle("hidden", available);
   }
 
   function refreshAvailability() {

@@ -109,6 +109,22 @@
     button.setAttribute("aria-label", collapsed ? "Expand video" : "Collapse video");
   });
 
+  // YouTube embeds (internal/markdown's renderYouTubeEmbed) render as a
+  // thumbnail + play button, not a live iframe, so a note with several
+  // YouTube links doesn't load several YouTube iframes (and their
+  // tracking/cookies) up front — the real iframe is only created here, on
+  // click. Delegated for the same reason as .video-toggle above.
+  noteContent.addEventListener("click", (event) => {
+    const play = event.target.closest(".youtube-embed-play");
+    if (!play) return;
+
+    const wrapper = play.closest(".youtube-embed");
+    const videoId = wrapper.dataset.videoId;
+    wrapper.innerHTML =
+      `<iframe src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1" ` +
+      `title="YouTube video" frameborder="0" allow="accelerate-compute; autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  });
+
   function storedToken() {
     return localStorage.getItem(STORAGE_TOKEN_KEY);
   }
