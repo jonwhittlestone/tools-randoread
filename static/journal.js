@@ -2,6 +2,14 @@
 // the 26-nanoclaw vault project's main.md §05.05. Self-contained (own
 // authedFetch), same split-out-of-app.js shape as watching-notes.js.
 //
+// Visible only on the Daily note page — the journal is inherently a Daily
+// concept (it only ever writes to *today's* note), so showing it while
+// browsing Rando/Clipped/Watching would just be confusing. Tracked via a
+// MutationObserver on #daily-button's "active" class rather than a custom
+// event, since app.js's setActiveMode toggles that class on every section
+// switch (click, hash routing, and initial page load all funnel through
+// it) and isn't otherwise instrumented for other scripts to hook into.
+//
 // Availability: NanoClaw runs on a different host from randoread, reachable
 // only while that host is on the Tailscale network (see main.md §05.05.02
 // "Security"). The bar is hidden entirely, not just disabled, whenever
@@ -9,11 +17,8 @@
 // rechecked periodically, since reachability can change after load (dev
 // laptop sleeping/waking, tailnet dropping).
 //
-// The apply step (journal-apply) only ever targets *today's* daily note,
-// regardless of which section is currently on screen — so the visible pane
-// is only refreshed if Daily happens to be the active section already;
-// otherwise the note is still updated in Dropbox, just not re-rendered
-// until the user switches to Daily themselves.
+// Both conditions (Daily active AND available) gate the same "hidden"
+// class — see updateBarVisibility.
 (function () {
   "use strict";
 
@@ -155,16 +160,30 @@
     if (e.key === "Enter") send();
   });
 
-  // --- Availability gate ---
+  // --- Visibility: available (NanoClaw reachable) AND Daily is active ---
+  var available = false;
+
+  function updateBarVisibility() {
+    var dailyActive = dailyButton.classList.contains("active");
+    bar.classList.toggle("hidden", !(available && dailyActive));
+  }
+
   function refreshAvailability() {
     fetchJSON("api/journal/status")
       .then(function (result) {
-        bar.classList.toggle("hidden", !(result.ok && result.data.available));
+        available = !!(result.ok && result.data.available);
+        updateBarVisibility();
       })
       .catch(function () {
-        bar.classList.add("hidden");
+        available = false;
+        updateBarVisibility();
       });
   }
+
+  new MutationObserver(updateBarVisibility).observe(dailyButton, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
 
   refreshAvailability();
   setInterval(refreshAvailability, AVAILABILITY_RECHECK_MS);
