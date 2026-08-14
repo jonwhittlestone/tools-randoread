@@ -45,6 +45,29 @@
     });
   }
 
+  function delay(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  // One silent retry for a network-layer failure — fetch() itself
+  // rejecting (e.g. Chrome's ERR_NETWORK_CHANGED), not a normal HTTP error
+  // response, which fetchJSON already resolves as {ok:false, data} rather
+  // than rejecting. Specifically absorbs testing from doylestone02 itself:
+  // NanoClaw's own container spin-up briefly touches that host's network
+  // stack, which can abort an in-flight same-host request even though
+  // nothing is actually wrong server-side (main.md §05.05). onRetry, if
+  // given, fires once, right before the retry attempt.
+  function fetchJSONWithRetry(path, options, onRetry) {
+    return fetchJSON(path, options).catch(function () {
+      if (onRetry) onRetry();
+      return delay(400).then(function () {
+        return fetchJSON(path, options);
+      });
+    });
+  }
+
   // RFC3339 with the browser's own real UTC offset — e.g.
   // "2026-08-14T12:20:00+01:00" during BST. Date.toISOString() always
   // normalizes to UTC ("Z"), which is exactly the bug this replaces: the
@@ -214,7 +237,7 @@
     var draft = pendingDraft;
     modalOkBtn.disabled = true;
 
-    fetchJSON("api/journal/apply", {
+    fetchJSONWithRetry("api/journal/apply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -253,11 +276,17 @@
     setSending(true);
     status.textContent = "";
 
-    fetchJSON("api/journal/draft", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userText: text, nowIso: nowIso }),
-    })
+    fetchJSONWithRetry(
+      "api/journal/draft",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userText: text, nowIso: nowIso }),
+      },
+      function () {
+        status.textContent = "Connection hiccup, retrying…";
+      },
+    )
       .then(function (result) {
         setSending(false);
         if (!result.ok) {
