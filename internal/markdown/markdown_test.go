@@ -191,6 +191,62 @@ func TestRenderShowsPlaceholderForUnresolvedImageEmbed(t *testing.T) {
 	}
 }
 
+func TestRenderYouTubeShortURLEmbeds(t *testing.T) {
+	// The form mobile "Share" sheets actually produce (trailing ?si=...
+	// tracking param) — the real case that motivated this feature.
+	html := Render([]byte("https://youtu.be/F8X9_Dp3ZUk?si=EyR4vsfIzFVH1vxB"), resolveNone)
+	if !strings.Contains(html, `<div class="youtube-embed" data-video-id="F8X9_Dp3ZUk">`) {
+		t.Fatalf("expected a youtube-embed div with the extracted video ID, got: %s", html)
+	}
+	if !strings.Contains(html, `src="https://img.youtube.com/vi/F8X9_Dp3ZUk/hqdefault.jpg"`) {
+		t.Fatalf("expected a thumbnail placeholder, got: %s", html)
+	}
+	if !strings.Contains(html, `class="youtube-embed-play"`) {
+		t.Fatalf("expected a play button, got: %s", html)
+	}
+	if !strings.Contains(html, `href="https://youtu.be/F8X9_Dp3ZUk?si=EyR4vsfIzFVH1vxB"`) {
+		t.Fatalf("expected a fallback link preserving the original URL, got: %s", html)
+	}
+}
+
+func TestRenderYouTubeLongURLEmbeds(t *testing.T) {
+	html := Render([]byte("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s"), resolveNone)
+	if !strings.Contains(html, `data-video-id="dQw4w9WgXcQ"`) {
+		t.Fatalf("expected the video ID extracted from the long-form URL, got: %s", html)
+	}
+}
+
+func TestRenderYouTubeURLInsideExplicitLinkIsNotOverridden(t *testing.T) {
+	// Respect an author's own [label](url) around the URL rather than
+	// replacing it with an embed they didn't ask for.
+	html := Render([]byte("[Watch this](https://youtu.be/F8X9_Dp3ZUk)"), resolveNone)
+	if strings.Contains(html, "youtube-embed") {
+		t.Fatalf("expected no embed for a URL inside an explicit markdown link, got: %s", html)
+	}
+	if !strings.Contains(html, `href="https://youtu.be/F8X9_Dp3ZUk">Watch this</a>`) {
+		t.Fatalf("expected the explicit link to render normally, got: %s", html)
+	}
+}
+
+func TestRenderYouTubeURLInFencedCodeBlockIsLiteral(t *testing.T) {
+	html := Render([]byte("```\nhttps://youtu.be/F8X9_Dp3ZUk\n```"), resolveNone)
+	if strings.Contains(html, "youtube-embed") {
+		t.Fatalf("expected no embed inside a fenced code block, got: %s", html)
+	}
+}
+
+func TestRenderXHTMLLeavesYouTubeURLAsPlainLink(t *testing.T) {
+	// A live iframe is dead weight in an EPUB with no network access on
+	// the tablet — RenderXHTML should fall back to GFM's normal autolink.
+	html := RenderXHTML([]byte("https://youtu.be/F8X9_Dp3ZUk"), resolveNone)
+	if strings.Contains(html, "youtube-embed") {
+		t.Fatalf("expected RenderXHTML not to embed YouTube URLs, got: %s", html)
+	}
+	if !strings.Contains(html, `href="https://youtu.be/F8X9_Dp3ZUk"`) {
+		t.Fatalf("expected the URL to still autolink normally, got: %s", html)
+	}
+}
+
 func TestRenderWikilinkIsPlainTextNotNavigable(t *testing.T) {
 	html := Render([]byte("[[Some Note]] and [[Some Note|an alias]]"), resolveNone)
 	if strings.Contains(html, "<a ") {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/jonwhittlestone/tools-randoread/handlers"
 	"github.com/jonwhittlestone/tools-randoread/internal/dropbox"
+	"github.com/jonwhittlestone/tools-randoread/internal/journaldraft"
 	"github.com/jonwhittlestone/tools-randoread/internal/mail"
 	"github.com/jonwhittlestone/tools-randoread/internal/remarkable"
 	"github.com/jonwhittlestone/tools-randoread/internal/state"
@@ -73,6 +74,17 @@ type Config struct {
 	// tools-watchitlater's.
 	WatchitlaterBaseURL   string
 	WatchitlaterAuthToken string
+
+	// JournalDraftURL/APIKey connect to NanoClaw's one-shot journal-draft
+	// endpoint (src/journal-draft.ts in the nanoclaw repo) backing the
+	// floating "Send to oh-two" journal input — see the 26-nanoclaw vault
+	// project's main.md §05.05, including §05.05.02 "Security" for why
+	// this crosses hosts over Tailscale, never the public/LAN interface.
+	// Both empty is valid: the feature is opt-in and reports itself
+	// unavailable (see internal/journaldraft.Client.Configured) rather than
+	// failing at startup.
+	JournalDraftURL    string
+	JournalDraftAPIKey string
 
 	// CommitHash identifies which commit is actually running — surfaced on
 	// /health so a deploy can be confirmed live (see deploy/deploy.sh,
@@ -189,6 +201,15 @@ func newMux(cfg Config) http.Handler {
 	mux.HandleFunc("POST /api/watching/note/related", watchingNotesHandler.HandleAddRelated)
 	mux.HandleFunc("GET /api/watching/note/related-preview", watchingNotesHandler.HandleRelatedPreview)
 	mux.HandleFunc("POST /api/watching/note/related-save", watchingNotesHandler.HandleSaveRelated)
+
+	journalDraftClient := journaldraft.NewClient(cfg.JournalDraftURL, cfg.JournalDraftAPIKey)
+	journalDraftHandler := handlers.NewJournalDraftHandler(dropboxClient, journalDraftClient, cfg.VaultRoot, nil)
+	mux.HandleFunc("GET /api/journal/status", journalDraftHandler.HandleStatus)
+	mux.HandleFunc("POST /api/journal/draft", journalDraftHandler.HandleDraft)
+
+	journalApplyHandler := handlers.NewJournalApplyHandler(dropboxClient, vaultListCache, cfg.VaultRoot, nil)
+	journalApplyHandler.AuthToken = cfg.AuthToken
+	mux.HandleFunc("POST /api/journal/apply", journalApplyHandler.HandleApply)
 
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
@@ -332,6 +353,8 @@ func loadConfig() Config {
 		RemarkablePassword:    os.Getenv("REMARKABLE_PASSWORD"),
 		WatchitlaterBaseURL:   watchitlaterBaseURL,
 		WatchitlaterAuthToken: os.Getenv("WATCHITLATER_AUTH_TOKEN"),
+		JournalDraftURL:       os.Getenv("JOURNAL_DRAFT_URL"),
+		JournalDraftAPIKey:    os.Getenv("JOURNAL_DRAFT_API_KEY"),
 		CommitHash:            os.Getenv("COMMIT_HASH"),
 	}
 }

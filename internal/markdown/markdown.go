@@ -25,6 +25,11 @@ var (
 	wikilinkPattern      = regexp.MustCompile(`\[\[([^\]|]+)(?:\|([^\]]+))?\]\]`)
 	standardImagePattern = regexp.MustCompile(`!\[([^\]]*)\]\(([^)\s]+)\)`)
 	anchorHrefPattern    = regexp.MustCompile(`<a href="`)
+	// Matches both youtube.com/watch?v=ID and youtu.be/ID (the form mobile
+	// "Share" sheets produce, typically with a trailing ?si=... tracking
+	// param) — group 1 or 2 holds the 11-character video ID depending on
+	// which form matched.
+	youtubeURLPattern = regexp.MustCompile(`https?://(?:www\.)?(?:youtube\.com/watch\?v=([A-Za-z0-9_-]{11})\S*|youtu\.be/([A-Za-z0-9_-]{11})\S*)`)
 )
 
 // openLinksInNewTab adds target="_blank" (plus the standard rel guard
@@ -110,6 +115,27 @@ func preprocess(source string, resolveImage ImageResolver, resolveAbsoluteImages
 		}
 		if inFence {
 			continue
+		}
+
+		// Skipped for XHTML/EPUB rendering (resolveAbsoluteImages is also
+		// RenderXHTML's signal, see its doc comment) — a live YouTube
+		// iframe is dead weight in an EPUB with no network access on the
+		// tablet; a plain autolinked URL (GFM's default) is strictly more
+		// useful there, so this step is left to only Render's browser path.
+		if !resolveAbsoluteImages {
+			original := line
+			line = youtubeURLPattern.ReplaceAllStringFunc(line, func(match string) string {
+				// Respect an explicit [label](url) the author already wrote
+				// around this URL rather than overriding it with an embed.
+				if idx := strings.Index(original, match); idx >= 2 && original[idx-2:idx] == "](" {
+					return match
+				}
+				id := youtubeVideoID(match)
+				if id == "" {
+					return match
+				}
+				return renderYouTubeEmbed(id, match)
+			})
 		}
 
 		// Runs before embedPattern below, which produces its own
@@ -224,5 +250,34 @@ func renderVideoEmbed(url, display string) string {
 	return fmt.Sprintf(
 		`<div class="video-embed"><button type="button" class="video-toggle" aria-expanded="true" aria-label="Collapse video">−</button><video controls preload="metadata"><source src="%s">🎬 <a href="%s">%s</a></video></div>`,
 		url, url, stdhtml.EscapeString(display),
+	)
+}
+
+// youtubeVideoID extracts the 11-character video ID from a URL that
+// already matched youtubeURLPattern (whichever of its two alternatives —
+// youtube.com or youtu.be — actually matched), or "" if somehow neither
+// capture group is populated.
+func youtubeVideoID(url string) string {
+	m := youtubeURLPattern.FindStringSubmatch(url)
+	if m == nil {
+		return ""
+	}
+	if m[1] != "" {
+		return m[1]
+	}
+	return m[2]
+}
+
+// renderYouTubeEmbed renders a bare YouTube URL as a click-to-load embed:
+// a thumbnail (YouTube's public img.youtube.com CDN — no API key needed)
+// with a play button, swapped for the real <iframe> only on click (see
+// static/app.js's delegated .youtube-embed-play listener) rather than
+// loading the iframe — and whatever tracking/cookies it sets — up front
+// for every YouTube link a note happens to contain. Includes a plain link
+// fallback alongside the thumbnail for accessibility/no-JS.
+func renderYouTubeEmbed(id, url string) string {
+	return fmt.Sprintf(
+		`<div class="youtube-embed" data-video-id="%s"><button type="button" class="youtube-embed-play" aria-label="Play video">▶</button><img src="https://img.youtube.com/vi/%s/hqdefault.jpg" alt="YouTube video thumbnail" loading="lazy"><a class="youtube-embed-link" href="%s">Watch on YouTube</a></div>`,
+		id, id, url,
 	)
 }
