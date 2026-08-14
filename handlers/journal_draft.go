@@ -28,10 +28,14 @@ type JournalDraftHandler struct {
 	Client     JournalDraftClient
 	VaultRoot  string
 
-	// Now is overridable for tests; defaults to time.Now. Used both to
-	// resolve today's daily-note filename and to timestamp the fragment
-	// with the caller's wall-clock time (see journaldraft.Client.Draft's
-	// doc comment on why it must be the caller's clock, not NanoClaw's).
+	// Now is a fallback only — used when the request omits nowIso (older
+	// client, or a direct API call) or sends something unparseable. The
+	// normal path uses the browser-supplied nowIso for both the timestamp
+	// shown in the drafted line and for resolving "today's" filename: the
+	// server container's own clock isn't reliably in the user's timezone
+	// (this is exactly the bug that shipped first — server-side time.Now()
+	// produced a UTC timestamp a real BST user saw as an hour off), and
+	// only the browser actually knows the user's real local time.
 	Now func() time.Time
 }
 
@@ -44,8 +48,20 @@ func NewJournalDraftHandler(downloader NoteDownloader, client JournalDraftClient
 	return &JournalDraftHandler{Downloader: downloader, Client: client, VaultRoot: vaultRoot, Now: now}
 }
 
-func (h *JournalDraftHandler) dailyNotePath() string {
-	return h.VaultRoot + "/periodic/daily/" + note.DailyFilename(h.Now())
+// resolveNow parses the browser-supplied nowIso (RFC3339, with the
+// browser's own local UTC offset — see static/journal.js's localIso()),
+// falling back to h.Now() if it's missing or fails to parse.
+func (h *JournalDraftHandler) resolveNow(nowIso string) time.Time {
+	if nowIso != "" {
+		if t, err := time.Parse(time.RFC3339, nowIso); err == nil {
+			return t
+		}
+	}
+	return h.Now()
+}
+
+func (h *JournalDraftHandler) dailyNotePath(now time.Time) string {
+	return h.VaultRoot + "/periodic/daily/" + note.DailyFilename(now)
 }
 
 // HandleStatus serves GET /api/journal/status — backs the frontend's
@@ -59,6 +75,10 @@ func (h *JournalDraftHandler) HandleStatus(w http.ResponseWriter, r *http.Reques
 
 type journalDraftRequest struct {
 	UserText string `json:"userText"`
+	// NowISO is the browser's own local time (RFC3339, with its real UTC
+	// offset) at the moment "Send to oh-two" was clicked — see
+	// resolveNow's doc comment.
+	NowISO string `json:"nowIso"`
 }
 
 // HandleDraft serves POST /api/journal/draft. Read-only against Dropbox
@@ -70,13 +90,15 @@ func (h *JournalDraftHandler) HandleDraft(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	raw, err := h.Downloader.Download(h.dailyNotePath())
+	now := h.resolveNow(req.NowISO)
+
+	raw, err := h.Downloader.Download(h.dailyNotePath(now))
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "failed to fetch today's daily note")
 		return
 	}
 
-	result, err := h.Client.Draft(r.Context(), string(raw), req.UserText, h.Now().Format(time.RFC3339))
+	result, err := h.Client.Draft(r.Context(), string(raw), req.UserText, now.Format(time.RFC3339))
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "failed to draft journal entry")
 		return

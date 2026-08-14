@@ -866,6 +866,9 @@ a:hover {
 
 .journal-send-btn {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 16px;
   border-radius: 999px;
   border: none;
@@ -884,6 +887,29 @@ a:hover {
 .journal-send-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* NanoClaw's actual agent turn takes several seconds — a visible spinner
+   while the button is disabled, not just the "Thinking…" status text,
+   which was easy to miss (main.md §05.05, UX feedback after first live
+   test). */
+.journal-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: journal-spin 0.7s linear infinite;
+}
+
+.journal-spinner.hidden {
+  display: none;
+}
+
+@keyframes journal-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .journal-status {

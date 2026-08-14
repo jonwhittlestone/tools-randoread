@@ -26,6 +26,7 @@
   var AVAILABILITY_RECHECK_MS = 60000;
 
   var dailyButton = document.getElementById("daily-button");
+  var noteContent = document.getElementById("note-content");
   if (!dailyButton) return;
 
   function authedFetch(path, options) {
@@ -44,19 +45,71 @@
     });
   }
 
+  // RFC3339 with the browser's own real UTC offset — e.g.
+  // "2026-08-14T12:20:00+01:00" during BST. Date.toISOString() always
+  // normalizes to UTC ("Z"), which is exactly the bug this replaces: the
+  // backend used to timestamp entries with its own server clock (a
+  // container, not reliably in the user's timezone), so a BST user saw UTC
+  // times in their notes. Only the browser actually knows the user's real
+  // local time, so it's computed here and threaded through both the draft
+  // and the matching apply request — see journal_draft.go/journal_apply.go's
+  // resolveNow doc comments.
+  function localIso() {
+    var d = new Date();
+    function pad(n) {
+      return String(n).padStart(2, "0");
+    }
+    var offsetMin = -d.getTimezoneOffset();
+    var sign = offsetMin >= 0 ? "+" : "-";
+    var offH = pad(Math.floor(Math.abs(offsetMin) / 60));
+    var offM = pad(Math.abs(offsetMin) % 60);
+    return (
+      d.getFullYear() +
+      "-" +
+      pad(d.getMonth() + 1) +
+      "-" +
+      pad(d.getDate()) +
+      "T" +
+      pad(d.getHours()) +
+      ":" +
+      pad(d.getMinutes()) +
+      ":" +
+      pad(d.getSeconds()) +
+      sign +
+      offH +
+      ":" +
+      offM
+    );
+  }
+
   // --- Floating bar ---
   var bar = document.createElement("div");
   bar.className = "journal-bar hidden";
   bar.innerHTML =
     '<button type="button" class="journal-attach-btn" disabled title="Image attachments coming soon">📎</button>' +
     '<input type="text" class="journal-input" placeholder="Tell oh-two something to note down…">' +
-    '<button type="button" class="journal-send-btn">Send to oh-two</button>' +
+    '<button type="button" class="journal-send-btn">' +
+    '<span class="journal-spinner hidden"></span>' +
+    '<span class="journal-send-label">Send to oh-two</span>' +
+    "</button>" +
     '<span class="journal-status"></span>';
   document.body.appendChild(bar);
 
   var input = bar.querySelector(".journal-input");
   var sendBtn = bar.querySelector(".journal-send-btn");
+  var sendSpinner = bar.querySelector(".journal-spinner");
+  var sendLabel = bar.querySelector(".journal-send-label");
   var status = bar.querySelector(".journal-status");
+
+  // The container spawn NanoClaw does per request genuinely takes several
+  // seconds (a real agent turn, not a cheap lookup) — "Thinking…" text
+  // alone was too easy to miss, so the button itself shows a spinner for
+  // the whole time it's disabled.
+  function setSending(sending) {
+    sendBtn.disabled = sending;
+    sendSpinner.classList.toggle("hidden", !sending);
+    sendLabel.textContent = sending ? "Sending…" : "Send to oh-two";
+  }
 
   // --- Confirm modal (same overlay/modal shape as emoji-picker.js) ---
   var overlay = document.createElement("div");
@@ -77,7 +130,7 @@
   var modalCancelBtn = overlay.querySelector(".cancel");
   var modalOkBtn = overlay.querySelector(".ok");
 
-  var pendingDraft = null; // {heading, insertionMarkdown, reply} awaiting confirm
+  var pendingDraft = null; // {heading, insertionMarkdown, reply, nowIso} awaiting confirm
 
   function openModal(draft) {
     pendingDraft = draft;
@@ -96,6 +149,66 @@
   });
   modalCancelBtn.addEventListener("click", closeModal);
 
+  function stripMarkdownHeading(md) {
+    return (md || "").replace(/^#+\s*/, "").trim();
+  }
+
+  function headingLevelOf(el) {
+    return Number(el.tagName.charAt(1));
+  }
+
+  // enhanceFoldableHeadings (foldable-headings.js) prepends a ▾/▸ toggle
+  // glyph as the heading's first child — strip it before comparing text.
+  function renderedHeadingText(heading) {
+    return heading.textContent.replace(/^[▾▸]\s*/, "").trim();
+  }
+
+  // After a note reload that just added a line, collapse every top-level
+  // (H2) section except the one the new line actually landed in, so the
+  // addition is immediately visible without scrolling the whole note —
+  // one-shot, only for the reload this triggers, not general Daily
+  // browsing. headingMarkdown is the exact heading NanoClaw returned (e.g.
+  // "## 📌 etc." or "### Vent") — for a ### MOTIVES subheading, this walks
+  // back to its enclosing "## 🗨 Log" and keeps that expanded instead,
+  // since folding the parent would hide the subheading entirely.
+  function revealSectionAfterReload(headingMarkdown) {
+    if (!noteContent || !window.setHeadingFolded) return;
+    var targetText = stripMarkdownHeading(headingMarkdown);
+
+    var observer = new MutationObserver(function () {
+      observer.disconnect();
+
+      var headings = Array.prototype.slice.call(
+        noteContent.querySelectorAll("h1, h2, h3, h4, h5, h6"),
+      );
+      var targetIdx = -1;
+      for (var i = 0; i < headings.length; i++) {
+        if (renderedHeadingText(headings[i]) === targetText) {
+          targetIdx = i;
+          break;
+        }
+      }
+      if (targetIdx === -1) return; // couldn't match — leave the note as rendered
+
+      var keepExpanded = headings[targetIdx];
+      for (var j = targetIdx; j >= 0; j--) {
+        if (headingLevelOf(headings[j]) <= 2) {
+          keepExpanded = headings[j];
+          break;
+        }
+      }
+
+      headings.forEach(function (h) {
+        if (headingLevelOf(h) <= 2) {
+          window.setHeadingFolded(h, h !== keepExpanded);
+        }
+      });
+
+      keepExpanded.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    observer.observe(noteContent, { childList: true });
+  }
+
   modalOkBtn.addEventListener("click", function () {
     if (!pendingDraft) return;
     var draft = pendingDraft;
@@ -107,6 +220,10 @@
       body: JSON.stringify({
         heading: draft.heading,
         insertionMarkdown: draft.insertionMarkdown,
+        // Same nowIso the matching draft request sent — see
+        // journal_apply.go's resolveNow doc comment on why apply must
+        // target the same day draft did, not re-derive "now" again.
+        nowIso: draft.nowIso,
       }),
     })
       .then(function (result) {
@@ -117,6 +234,7 @@
         }
         closeModal();
         if (dailyButton.classList.contains("active")) {
+          revealSectionAfterReload(draft.heading);
           dailyButton.click();
         }
       })
@@ -131,26 +249,27 @@
     var text = input.value.trim();
     if (!text) return;
 
-    sendBtn.disabled = true;
-    status.textContent = "Thinking…";
+    var nowIso = localIso();
+    setSending(true);
+    status.textContent = "";
 
     fetchJSON("api/journal/draft", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userText: text }),
+      body: JSON.stringify({ userText: text, nowIso: nowIso }),
     })
       .then(function (result) {
-        sendBtn.disabled = false;
+        setSending(false);
         if (!result.ok) {
           status.textContent = result.data.error || "Failed to reach oh-two.";
           return;
         }
         status.textContent = "";
         input.value = "";
-        openModal(result.data);
+        openModal(Object.assign({}, result.data, { nowIso: nowIso }));
       })
       .catch(function () {
-        sendBtn.disabled = false;
+        setSending(false);
         status.textContent = "Failed to reach oh-two.";
       });
   }

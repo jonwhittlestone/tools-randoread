@@ -49,6 +49,37 @@ func TestJournalApplyHandler_Success(t *testing.T) {
 	}
 }
 
+func TestJournalApplyHandler_UsesBrowserSuppliedNowIso(t *testing.T) {
+	// Regression test — see the matching draft-side test's comment. Apply
+	// must target the date the *browser* says it is, not the server
+	// container's own clock, and specifically the nowIso the caller sends
+	// (which the frontend carries over from the matching draft call) —
+	// here that's a different calendar day than fixedNow's UTC value, to
+	// prove it's actually driving which file gets written.
+	vaultRoot := "/vault"
+	bstPath := vaultRoot + "/periodic/daily/2026-08-15-W33-Sat.md"
+
+	dbx := newFakeNotesDropbox(vaultRoot)
+	dbx.files[bstPath] = []byte("## 📌 etc.\n\n- \n")
+
+	h := NewJournalApplyHandler(dbx, &fakeLister{}, vaultRoot, fixedNow)
+
+	body, _ := json.Marshal(map[string]string{ //nolint:errcheck
+		"heading":           "## 📌 etc.",
+		"insertionMarkdown": "- `00:20`: noted",
+		"nowIso":            "2026-08-15T00:20:00+01:00", // just past midnight BST
+	})
+	w := httptest.NewRecorder()
+	h.HandleApply(w, httptest.NewRequest(http.MethodPost, "/api/journal/apply", bytes.NewReader(body)))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if len(dbx.uploadCalls) != 1 || dbx.uploadCalls[0].path != bstPath {
+		t.Fatalf("uploaded to %v, want exactly one upload to %q", dbx.uploadCalls, bstPath)
+	}
+}
+
 func TestJournalApplyHandler_MissingFields(t *testing.T) {
 	h := NewJournalApplyHandler(newFakeNotesDropbox("/vault"), &fakeLister{}, "/vault", fixedNow)
 

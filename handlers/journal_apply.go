@@ -31,7 +31,13 @@ type JournalApplyHandler struct {
 	VaultRoot   string
 	AuthToken   string
 
-	// Now is overridable for tests; defaults to time.Now.
+	// Now is a fallback only, for the same reason as
+	// JournalDraftHandler.Now — see that doc comment. The normal path uses
+	// the browser-supplied nowIso, and critically the *same* nowIso the
+	// matching draft call used (the frontend carries it from draft's
+	// request straight into apply's), so a modal left open across midnight
+	// can't make apply write to a different day's file than the one draft
+	// actually read the heading from.
 	Now func() time.Time
 }
 
@@ -44,13 +50,26 @@ func NewJournalApplyHandler(dbx JournalDropbox, vaultLister NoteLister, vaultRoo
 	return &JournalApplyHandler{Dropbox: dbx, VaultLister: vaultLister, VaultRoot: vaultRoot, Now: now}
 }
 
-func (h *JournalApplyHandler) dailyNotePath() string {
-	return h.VaultRoot + "/periodic/daily/" + note.DailyFilename(h.Now())
+// resolveNow — see JournalDraftHandler.resolveNow's doc comment.
+func (h *JournalApplyHandler) resolveNow(nowIso string) time.Time {
+	if nowIso != "" {
+		if t, err := time.Parse(time.RFC3339, nowIso); err == nil {
+			return t
+		}
+	}
+	return h.Now()
+}
+
+func (h *JournalApplyHandler) dailyNotePath(now time.Time) string {
+	return h.VaultRoot + "/periodic/daily/" + note.DailyFilename(now)
 }
 
 type journalApplyRequest struct {
 	Heading           string `json:"heading"`
 	InsertionMarkdown string `json:"insertionMarkdown"`
+	// NowISO should be the exact value the matching draft request sent —
+	// see the Now field's doc comment.
+	NowISO string `json:"nowIso"`
 }
 
 // HandleApply serves POST /api/journal/apply. Re-downloads today's note
@@ -65,7 +84,7 @@ func (h *JournalApplyHandler) HandleApply(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	path := h.dailyNotePath()
+	path := h.dailyNotePath(h.resolveNow(req.NowISO))
 	raw, err := h.Dropbox.Download(path)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "failed to fetch today's daily note")

@@ -87,6 +87,55 @@ func TestJournalDraftHandler_HandleDraft_Success(t *testing.T) {
 	}
 }
 
+func TestJournalDraftHandler_HandleDraft_UsesBrowserSuppliedNowIso(t *testing.T) {
+	// Regression test: the server container's own clock isn't reliably in
+	// the user's timezone (this is the bug that actually shipped — a BST
+	// user saw a UTC timestamp an hour off). h.Now (fixedNow, UTC) must be
+	// ignored whenever the request supplies its own nowIso.
+	notePath := "/vault/periodic/daily/2026-08-14-W33-Fri.md"
+	downloader := &fakeDownloader{files: map[string][]byte{notePath: []byte("note")}}
+	client := &fakeJournalDraftClient{result: &journaldraft.Result{
+		Heading: "## 📌 etc.", InsertionMarkdown: "- x", Reply: "ok",
+	}}
+	h := NewJournalDraftHandler(downloader, client, "/vault", fixedNow)
+
+	bstNowIso := "2026-08-14T12:20:00+01:00"   // what fixedNow's UTC equivalent would be, in BST
+	body, _ := json.Marshal(map[string]string{ //nolint:errcheck
+		"userText": "hello", "nowIso": bstNowIso,
+	})
+	w := httptest.NewRecorder()
+	h.HandleDraft(w, httptest.NewRequest(http.MethodPost, "/api/journal/draft", bytes.NewReader(body)))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if client.gotNowISO != bstNowIso {
+		t.Errorf("gotNowISO = %q, want the browser-supplied %q (not fixedNow's UTC)", client.gotNowISO, bstNowIso)
+	}
+}
+
+func TestJournalDraftHandler_HandleDraft_FallsBackOnUnparseableNowIso(t *testing.T) {
+	notePath := "/vault/periodic/daily/2026-08-14-W33-Fri.md"
+	downloader := &fakeDownloader{files: map[string][]byte{notePath: []byte("note")}}
+	client := &fakeJournalDraftClient{result: &journaldraft.Result{
+		Heading: "## 📌 etc.", InsertionMarkdown: "- x", Reply: "ok",
+	}}
+	h := NewJournalDraftHandler(downloader, client, "/vault", fixedNow)
+
+	body, _ := json.Marshal(map[string]string{ //nolint:errcheck
+		"userText": "hello", "nowIso": "not-a-real-timestamp",
+	})
+	w := httptest.NewRecorder()
+	h.HandleDraft(w, httptest.NewRequest(http.MethodPost, "/api/journal/draft", bytes.NewReader(body)))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if client.gotNowISO != fixedNow().Format(time.RFC3339) {
+		t.Errorf("gotNowISO = %q, want fallback to fixedNow", client.gotNowISO)
+	}
+}
+
 func TestJournalDraftHandler_HandleDraft_MissingUserText(t *testing.T) {
 	h := NewJournalDraftHandler(&fakeDownloader{}, &fakeJournalDraftClient{}, "/vault", fixedNow)
 

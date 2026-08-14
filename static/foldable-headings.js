@@ -73,4 +73,9 @@
   });
 
   window.enhanceFoldableHeadings = enhanceFoldableHeadings;
+  // Exposed so other standalone widgets can fold/unfold programmatically —
+  // e.g. journal.js collapsing every section but the one it just wrote to,
+  // right after a note reload, without duplicating this module's fold
+  // semantics (see sectionElements' equal-or-higher-level rule).
+  window.setHeadingFolded = setFolded;
 })();
