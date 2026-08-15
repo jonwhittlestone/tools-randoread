@@ -51,21 +51,37 @@
     });
   }
 
-  // One silent retry for a network-layer failure — fetch() itself
-  // rejecting (e.g. Chrome's ERR_NETWORK_CHANGED), not a normal HTTP error
-  // response, which fetchJSON already resolves as {ok:false, data} rather
-  // than rejecting. Specifically absorbs testing from doylestone02 itself:
-  // NanoClaw's own container spin-up briefly touches that host's network
-  // stack, which can abort an in-flight same-host request even though
-  // nothing is actually wrong server-side (main.md §05.05). onRetry, if
-  // given, fires once, right before the retry attempt.
+  // Retries (increasing backoff) for a network-layer failure — fetch()
+  // itself rejecting (e.g. Chrome's ERR_NETWORK_CHANGED), not a normal HTTP
+  // error response, which fetchJSON already resolves as {ok:false, data}
+  // rather than rejecting. Specifically for testing from doylestone02
+  // itself: NanoClaw's own container spin-up briefly touches that host's
+  // network stack, which can abort an in-flight same-host request even
+  // though nothing is actually wrong server-side (main.md §05.05).
+  //
+  // A single short retry wasn't enough in practice — confirmed via HAR
+  // capture that the retry landed close enough behind the original attempt
+  // to trigger its *own* container spin-up and hit the exact same
+  // collision again. Backoff increases specifically so a later attempt has
+  // a real chance of landing outside that window, not just repeating the
+  // same near-immediate timing. Still probabilistic, not a guarantee —
+  // every other device tested from has worked first try, so this only
+  // matters when testing from doylestone02 itself.
+  var RETRY_DELAYS_MS = [500, 1500, 3000];
+
   function fetchJSONWithRetry(path, options, onRetry) {
-    return fetchJSON(path, options).catch(function () {
-      if (onRetry) onRetry();
-      return delay(400).then(function () {
-        return fetchJSON(path, options);
+    function attempt(retriesLeft) {
+      return fetchJSON(path, options).catch(function (err) {
+        if (retriesLeft <= 0) throw err;
+        var attemptNumber = RETRY_DELAYS_MS.length - retriesLeft + 1;
+        if (onRetry) onRetry(attemptNumber, RETRY_DELAYS_MS.length);
+        var thisDelay = RETRY_DELAYS_MS[attemptNumber - 1];
+        return delay(thisDelay).then(function () {
+          return attempt(retriesLeft - 1);
+        });
       });
-    });
+    }
+    return attempt(RETRY_DELAYS_MS.length);
   }
 
   // RFC3339 with the browser's own real UTC offset — e.g.
@@ -394,8 +410,9 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userText: text, nowIso: nowIso }),
       },
-      function () {
-        status.textContent = "Connection hiccup, retrying…";
+      function (attemptNumber, totalRetries) {
+        status.textContent =
+          "Connection hiccup, retrying… (" + attemptNumber + "/" + totalRetries + ")";
       },
     )
       .then(function (result) {
