@@ -393,3 +393,86 @@ func TestHandleSaveRelated_RejectsInvalidJSON(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+const checklistNotePath = testVaultRoot + "/Clippings/randoread-watching-it-later/2026-07-15-80-malcolm-gladwell-talking-to-strangers.md"
+const checklistNote = "> https://www.youtube.com/watch?v=Hgr1Wv8mwh8\n## vault references\n- nothing\n\n---\n\n| ✓ | Piece |\n|---|---|\n| [ ] | A |\n| [x] | B |\n"
+
+func postCheckbox(h *WatchingNotesHandler, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/watching/note/checkbox", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.HandleSetCheckbox(rec, req)
+	return rec
+}
+
+// The tick is written straight into the note's markdown in Dropbox — not
+// browser storage — so it survives reloads and shows on every device and
+// in Obsidian.
+func TestHandleSetCheckbox_WritesMarkdownToDropbox(t *testing.T) {
+	f := &fakeWatchitlaterClient{current: stagedRecord()}
+	dbx := newFakeNotesDropbox(testVaultRoot)
+	dbx.files[checklistNotePath] = []byte(checklistNote)
+	h := newTestNotesHandler(f, dbx)
+
+	rec := postCheckbox(h, `{"index":0,"checked":true}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	want := strings.Replace(checklistNote, "| [ ] | A |", "| [x] | A |", 1)
+	if got := string(dbx.files[checklistNotePath]); got != want {
+		t.Errorf("saved note:\n%s\nwant:\n%s", got, want)
+	}
+	resp := decodeNoteResponse(t, rec)
+	if resp.Raw != want {
+		t.Errorf("response raw should be the saved content, got %q", resp.Raw)
+	}
+	if strings.Count(resp.HTML, " checked>") != 2 {
+		t.Errorf("expected both boxes rendered checked, got:\n%s", resp.HTML)
+	}
+}
+
+// Always re-reads the note from Dropbox first, so a tick never clobbers an
+// edit made meanwhile in Obsidian or on another device.
+func TestHandleSetCheckbox_UsesFreshDropboxContent(t *testing.T) {
+	f := &fakeWatchitlaterClient{current: stagedRecord()}
+	dbx := newFakeNotesDropbox(testVaultRoot)
+	dbx.files[checklistNotePath] = []byte(checklistNote + "\nadded in Obsidian\n")
+	h := newTestNotesHandler(f, dbx)
+
+	postCheckbox(h, `{"index":1,"checked":false}`)
+
+	got := string(dbx.files[checklistNotePath])
+	if !strings.Contains(got, "added in Obsidian") || !strings.Contains(got, "| [ ] | B |") {
+		t.Errorf("expected fresh content kept and box B unticked, got:\n%s", got)
+	}
+}
+
+func TestHandleSetCheckbox_Errors(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(*fakeNotesDropbox)
+		body  string
+		want  int
+	}{
+		{"invalid JSON", func(d *fakeNotesDropbox) { d.files[checklistNotePath] = []byte(checklistNote) }, `{`, http.StatusBadRequest},
+		{"index out of range", func(d *fakeNotesDropbox) { d.files[checklistNotePath] = []byte(checklistNote) }, `{"index":5,"checked":true}`, http.StatusBadRequest},
+		{"note never saved", func(d *fakeNotesDropbox) {}, `{"index":0,"checked":true}`, http.StatusNotFound},
+		{"upload fails", func(d *fakeNotesDropbox) {
+			d.files[checklistNotePath] = []byte(checklistNote)
+			d.uploadErr = errors.New("dropbox down")
+		}, `{"index":0,"checked":true}`, http.StatusBadGateway},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeWatchitlaterClient{current: stagedRecord()}
+			dbx := newFakeNotesDropbox(testVaultRoot)
+			tc.setup(dbx)
+			h := newTestNotesHandler(f, dbx)
+
+			rec := postCheckbox(h, tc.body)
+			if rec.Code != tc.want {
+				t.Errorf("expected %d, got %d: %s", tc.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}

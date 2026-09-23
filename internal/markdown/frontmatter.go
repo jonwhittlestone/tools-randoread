@@ -15,20 +15,11 @@ import (
 // else in the block (tags, author, etc.) is just dropped as noise.
 func stripFrontmatter(source string) string {
 	lines := strings.Split(source, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	bodyStart := frontmatterEnd(lines)
+	if bodyStart == 0 {
 		return source
 	}
-
-	end := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			end = i
-			break
-		}
-	}
-	if end == -1 {
-		return source // no closing delimiter — not actually frontmatter
-	}
+	end := bodyStart - 1
 
 	fmLines := lines[1:end]
 	body := strings.TrimLeft(strings.Join(lines[end+1:], "\n"), "\n")
@@ -65,4 +56,20 @@ func frontmatterField(lines []string, key string) string {
 		}
 	}
 	return ""
+}
+
+// frontmatterEnd returns the index of the first line after a leading YAML
+// frontmatter block, or 0 if there isn't one (no opening "---", or no
+// closing delimiter). Shared by stripFrontmatter and SetTableCheckbox so
+// both agree on where the body starts.
+func frontmatterEnd(lines []string) int {
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return 0
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return i + 1
+		}
+	}
+	return 0
 }
