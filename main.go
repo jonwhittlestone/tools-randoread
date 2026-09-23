@@ -197,6 +197,7 @@ func newMux(cfg Config) http.Handler {
 	watchingNotesHandler.AuthToken = cfg.AuthToken
 	mux.HandleFunc("GET /api/watching/note", watchingNotesHandler.HandleGet)
 	mux.HandleFunc("POST /api/watching/note", watchingNotesHandler.HandleSave)
+	mux.HandleFunc("POST /api/watching/note/checkbox", watchingNotesHandler.HandleSetCheckbox)
 	mux.HandleFunc("GET /api/watching/note/search", watchingNotesHandler.HandleSearch)
 	mux.HandleFunc("POST /api/watching/note/related", watchingNotesHandler.HandleAddRelated)
 	mux.HandleFunc("GET /api/watching/note/related-preview", watchingNotesHandler.HandleRelatedPreview)

@@ -205,6 +205,48 @@ func (h *WatchingNotesHandler) HandleSave(w http.ResponseWriter, r *http.Request
 	writeJSON(w, resp)
 }
 
+// HandleSetCheckbox serves POST /api/watching/note/checkbox — ticking or
+// unticking a table-cell "[ ]"/"[x]" box in the rendered note (see
+// internal/markdown/checkbox.go). The state lives in the note's markdown in
+// Dropbox, not browser storage, so it survives reloads and is shared by
+// every device and by Obsidian. Re-reads the note from Dropbox first rather
+// than trusting the client's copy, so a tick never clobbers an edit made
+// elsewhere in the meantime.
+func (h *WatchingNotesHandler) HandleSetCheckbox(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Index   int  `json:"index"`
+		Checked bool `json:"checked"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	record, ok := h.currentStagedRecord(w)
+	if !ok {
+		return
+	}
+	path, found := h.findExisting(record)
+	if !found {
+		writeJSONError(w, http.StatusNotFound, "note not saved yet")
+		return
+	}
+	data, err := h.Dropbox.Download(path)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "failed to load note")
+		return
+	}
+	updated, err := markdown.SetTableCheckbox(string(data), body.Index, body.Checked)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.Dropbox.Upload(path, []byte(updated)); err != nil {
+		writeJSONError(w, http.StatusBadGateway, "failed to save note")
+		return
+	}
+	writeJSON(w, h.render(updated, path, true))
+}
+
 // HandleAddRelated serves POST /api/watching/note/related — "Linking to
 // existing note" (see main-randoread.md 05.02).
 func (h *WatchingNotesHandler) HandleAddRelated(w http.ResponseWriter, r *http.Request) {

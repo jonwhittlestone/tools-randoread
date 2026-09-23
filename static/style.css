@@ -1147,3 +1147,16 @@ a:hover {
 .journal-modal-btn.ok:hover {
   background: var(--accent-hover);
 }
+
+/* Table-cell "[ ]"/"[x]" boxes (06.02) — enabled only in the video's own
+   note, where watching-notes.js persists ticks to the markdown in Dropbox. */
+.md-table-checkbox {
+  width: 1.1em;
+  height: 1.1em;
+  accent-color: var(--accent);
+  vertical-align: middle;
+}
+
+.md-table-checkbox:not(:disabled) {
+  cursor: pointer;
+}

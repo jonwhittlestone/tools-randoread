@@ -101,6 +101,50 @@
   // see enterEditMode/doSave.
   var activeNote = new WeakMap();
 
+  // Table-cell "[ ]"/"[x]" boxes (main-randoread.md 06.02) render disabled
+  // server-side, since the same HTML is also shown in places that can't
+  // persist a tick. The video's own note can, so they're enabled here. Each
+  // tick is written straight into the note's markdown in Dropbox (not
+  // browser storage), so it survives reloads, shows on every device, and
+  // appears as "[x]" in Obsidian. Ticks are queued per panel so two quick
+  // clicks can't race each other's read-modify-write on the server.
+  var checkboxQueues = new WeakMap();
+
+  function enableCheckboxes(body) {
+    body.querySelectorAll(".md-table-checkbox").forEach(function (box) {
+      box.disabled = false;
+    });
+  }
+
+  function saveCheckbox(panel, box) {
+    var wanted = box.checked;
+    box.disabled = true;
+    var queued = (checkboxQueues.get(panel) || Promise.resolve()).then(function () {
+      return fetchJSON("api/watching/note/checkbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index: Number(box.dataset.checkboxIndex), checked: wanted }),
+      })
+        .then(function (r) {
+          if (!r.ok) throw new Error(r.data.error || "save failed");
+          // Keep the in-memory raw in step so a later Edit starts from the
+          // ticked content. Deliberately not a full re-render (fillPanel),
+          // which would reset folded headings and the scroll position.
+          var active = activeNote.get(panel) || {};
+          activeNote.set(panel, { path: r.data.path, raw: r.data.raw, isMain: active.isMain !== false });
+          box.title = "";
+        })
+        .catch(function () {
+          box.checked = !wanted;
+          box.title = "Couldn't save that tick. Try again.";
+        })
+        .then(function () {
+          box.disabled = false;
+        });
+    });
+    checkboxQueues.set(panel, queued);
+  }
+
   function renderReferences(panel, references) {
     var els = panelEls(panel);
     els.refs.innerHTML = "";
@@ -139,6 +183,7 @@
     activeNote.set(panel, { path: data.path, raw: data.raw, isMain: true });
     els.body.innerHTML = data.html || "";
     window.enhanceFoldableHeadings(els.body);
+    enableCheckboxes(els.body);
     els.preview.classList.add("hidden");
     els.body.classList.remove("hidden");
     renderReferences(panel, data.references);
@@ -509,6 +554,13 @@
     if (resultItem) {
       addRelated(resultItem.closest(".watching-notes-panel"), resultItem.dataset.path);
       return;
+    }
+  });
+
+  noteContent.addEventListener("change", function (event) {
+    var box = event.target.closest(".watching-notes-body .md-table-checkbox");
+    if (box) {
+      saveCheckbox(box.closest(".watching-notes-panel"), box);
     }
   });
 
