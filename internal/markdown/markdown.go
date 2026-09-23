@@ -107,6 +107,7 @@ func render(r goldmark.Markdown, source []byte, resolveImage ImageResolver, reso
 func preprocess(source string, resolveImage ImageResolver, resolveAbsoluteImages bool) string {
 	lines := strings.Split(source, "\n")
 	inFence := false
+	nextCheckbox := 0
 
 	for i, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "```") {
@@ -115,6 +116,14 @@ func preprocess(source string, resolveImage ImageResolver, resolveAbsoluteImages
 		}
 		if inFence {
 			continue
+		}
+
+		// Whole-cell "[ ]"/"[x]" in a table row — see checkbox.go. Numbered
+		// in the same walk order SetTableCheckbox uses.
+		if isTableRow(line) {
+			line = replaceTableCheckboxes(line, &nextCheckbox, func(index int, checked bool, _ string) string {
+				return renderTableCheckbox(index, checked, resolveAbsoluteImages)
+			})
 		}
 
 		// Skipped for XHTML/EPUB rendering (resolveAbsoluteImages is also
