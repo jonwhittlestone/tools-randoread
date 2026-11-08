@@ -93,7 +93,57 @@
     noteContent.innerHTML = data.html;
     window.enhanceFoldableHeadings(noteContent);
     currentNote = { path: data.path, title: data.title };
+    updateTitleFoldToggle();
   }
+
+  // main-randoread.md 05.04 — in Daily, the note title doubles as a
+  // "collapse/expand every ## section" button. Daily only: Watching and
+  // Clippings put breadcrumb links in this element, and Rando/Clipped were
+  // out of scope. The fold logic itself lives in foldable-headings.js.
+  const TITLE_FOLD_LEVEL = 2;
+
+  function titleFoldActive() {
+    return dailyButton.classList.contains("active");
+  }
+
+  function updateTitleFoldToggle() {
+    const on = titleFoldActive();
+    noteTitle.classList.toggle("note-title-fold-toggle", on);
+    if (!on) {
+      ["role", "tabindex", "title", "aria-expanded"].forEach((a) => noteTitle.removeAttribute(a));
+      return;
+    }
+    noteTitle.setAttribute("role", "button");
+    noteTitle.setAttribute("tabindex", "0");
+    noteTitle.setAttribute("title", "Collapse/expand all sections");
+    noteTitle.setAttribute(
+      "aria-expanded",
+      String(window.anyHeadingExpanded(noteContent, TITLE_FOLD_LEVEL)),
+    );
+  }
+
+  function toggleAllSectionsFromTitle() {
+    if (!titleFoldActive()) return;
+    window.toggleAllHeadings(noteContent, TITLE_FOLD_LEVEL);
+    updateTitleFoldToggle();
+  }
+
+  noteTitle.addEventListener("click", toggleAllSectionsFromTitle);
+  noteTitle.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    if (!titleFoldActive()) return;
+    event.preventDefault(); // Space would otherwise scroll the page
+    toggleAllSectionsFromTitle();
+  });
+
+  // Keep the title's aria-expanded honest when sections are folded one at a
+  // time via their own ▾/▸ toggles. On document.body, not noteContent: a
+  // noteContent listener would fire *before* foldable-headings.js's body
+  // listener (bubbling order) and read the pre-fold state. Same-element
+  // listeners run in registration order, and that script loads first.
+  document.body.addEventListener("click", (event) => {
+    if (event.target.closest(".heading-fold-toggle")) updateTitleFoldToggle();
+  });
 
   // Delegated once (rather than re-bound per video) since noteContent's
   // innerHTML — and every .video-embed inside it — is replaced wholesale on

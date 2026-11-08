@@ -225,6 +225,17 @@ a:hover {
   word-break: break-word;
 }
 
+/* Daily only: tapping the title collapses/expands every ## section
+   (main-randoread.md 05.04). */
+#note-title.note-title-fold-toggle {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#note-title.note-title-fold-toggle:hover {
+  color: var(--text-normal);
+}
+
 #note-title-right {
   flex-shrink: 0;
   color: var(--text-muted);
