@@ -216,6 +216,49 @@ func TestRenderYouTubeLongURLEmbeds(t *testing.T) {
 	}
 }
 
+// main-randoread.md 05.05.01: block embeds become a raw "<div ...>" line,
+// which opens a CommonMark HTML block that only ends at a blank line — so a
+// heading written on the very next line (as in 2026-11-08-W45-Sun.md) was
+// swallowed as literal "## ..." text. Obsidian renders it as a heading.
+func resolveStretch(filename string) (string, bool) {
+	if filename == "stretch.mp4" {
+		return "api/asset?path=/videos/stretch.mp4", true
+	}
+	return "", false
+}
+
+func TestRenderHeadingDirectlyAfterVideoEmbedIsAHeading(t *testing.T) {
+	html := Render([]byte("![[stretch.mp4]]\n## 💪Static Cardio\n"), resolveStretch)
+	if !strings.Contains(html, "<h2") || !strings.Contains(html, "💪Static Cardio</h2>") {
+		t.Fatalf("expected an <h2> right after the video embed, got: %s", html)
+	}
+	if strings.Contains(html, "## 💪") {
+		t.Fatalf("heading markup leaked through as literal text, got: %s", html)
+	}
+}
+
+func TestRenderHeadingDirectlyAfterYouTubeEmbedIsAHeading(t *testing.T) {
+	html := Render([]byte("https://youtu.be/dQw4w9WgXcQ\n## Next\n"), resolveNone)
+	if !strings.Contains(html, "Next</h2>") {
+		t.Fatalf("expected an <h2> right after the YouTube embed, got: %s", html)
+	}
+}
+
+func TestRenderTextDirectlyAfterVideoEmbedIsAParagraph(t *testing.T) {
+	html := Render([]byte("![[stretch.mp4]]\nsome *notes* here\n"), resolveStretch)
+	if !strings.Contains(html, "<p>some <em>notes</em> here</p>") {
+		t.Fatalf("expected the following line to render as Markdown, got: %s", html)
+	}
+}
+
+func TestRenderXHTMLHeadingDirectlyAfterVideoEmbedIsAHeading(t *testing.T) {
+	// Same preprocess step feeds the EPUB/reMarkable path.
+	html := RenderXHTML([]byte("![[stretch.mp4]]\n## Next\n"), resolveStretch)
+	if !strings.Contains(html, "Next</h2>") {
+		t.Fatalf("expected an <h2> right after the video embed in XHTML, got: %s", html)
+	}
+}
+
 func TestRenderYouTubeURLInsideExplicitLinkIsNotOverridden(t *testing.T) {
 	// Respect an author's own [label](url) around the URL rather than
 	// replacing it with an embed they didn't ask for.
