@@ -52,7 +52,15 @@
       </div>
 
       <div class="note-title-row">
-        <div id="note-title"></div>
+        <!-- main-randoread.md 05.06: the ℹ️ explains the Daily title's
+             collapse/expand-all tap (05.04). Shown in Daily only. -->
+        <div class="note-title-left">
+          <div id="note-title"></div>
+          <button id="note-title-info" type="button" hidden
+                  aria-label="What does tapping the title do?"
+                  aria-expanded="false" aria-controls="note-title-tip">ℹ️</button>
+          <span id="note-title-tip" role="tooltip" hidden>Tap the date to collapse or expand all sections.</span>
+        </div>
         <span id="note-title-right"></span>
       </div>
     </header>
