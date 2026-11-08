@@ -202,10 +202,29 @@ func preprocess(source string, resolveImage ImageResolver, resolveAbsoluteImages
 			return name
 		})
 
+		// A line that now starts with a block embed's <div> opens a
+		// CommonMark HTML block (type 6), which only ends at a blank line —
+		// so a heading or paragraph written on the very next line (fine in
+		// Obsidian) would be swallowed as literal raw text. A trailing
+		// blank line closes the block. See main-randoread.md 05.05.01.
+		if startsWithBlockEmbed(line) {
+			line += "\n"
+		}
+
 		lines[i] = line
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// startsWithBlockEmbed reports whether a preprocessed line begins with one
+// of the <div>-wrapped embeds (video, YouTube) — the ones that open an HTML
+// block. PDFs (<object>) and images (Markdown ![](...)) don't need this; see
+// the 05.05.01 probe table.
+func startsWithBlockEmbed(line string) bool {
+	trimmed := strings.TrimLeft(line, " ")
+	return strings.HasPrefix(trimmed, `<div class="video-embed"`) ||
+		strings.HasPrefix(trimmed, `<div class="youtube-embed"`)
 }
 
 // isAbsoluteRef reports whether ref is already directly servable (a full
