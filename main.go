@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -211,6 +212,14 @@ func newMux(cfg Config) http.Handler {
 	journalApplyHandler := handlers.NewJournalApplyHandler(dropboxClient, vaultListCache, cfg.VaultRoot, nil)
 	journalApplyHandler.AuthToken = cfg.AuthToken
 	mux.HandleFunc("POST /api/journal/apply", journalApplyHandler.HandleApply)
+
+	// Go's built-in MIME table and the debian:bookworm-slim runtime image
+	// (no /etc/mime.types) both lack .webmanifest, so FileServer would
+	// sniff it as text/plain — register it so Chrome accepts the PWA
+	// manifest (main-randoread.md 05.03).
+	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
+		log.Fatal(err)
+	}
 
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
