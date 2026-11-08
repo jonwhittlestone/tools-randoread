@@ -15,6 +15,8 @@
   const toolbarToggle = document.getElementById("toolbar-toggle");
   const noteTitle = document.getElementById("note-title");
   const noteTitleRight = document.getElementById("note-title-right");
+  const noteTitleInfo = document.getElementById("note-title-info");
+  const noteTitleTip = document.getElementById("note-title-tip");
   const noteContent = document.getElementById("note-content");
   const menuButton = document.getElementById("menu-button");
   const menuPanel = document.getElementById("menu-panel");
@@ -109,6 +111,8 @@
   function updateTitleFoldToggle() {
     const on = titleFoldActive();
     noteTitle.classList.toggle("note-title-fold-toggle", on);
+    noteTitleInfo.hidden = !on;
+    if (!on) setTitleTipOpen(false);
     if (!on) {
       ["role", "tabindex", "title", "aria-expanded"].forEach((a) => noteTitle.removeAttribute(a));
       return;
@@ -127,6 +131,30 @@
     window.toggleAllHeadings(noteContent, TITLE_FOLD_LEVEL);
     updateTitleFoldToggle();
   }
+
+  // main-randoread.md 05.06 — the ℹ️ next to the Daily title opens a small
+  // tooltip explaining the tap. Tap again, tap elsewhere, or Escape closes.
+  // It's a sibling of #note-title, so tapping it never folds anything.
+  function setTitleTipOpen(open) {
+    noteTitleTip.hidden = !open;
+    noteTitleInfo.setAttribute("aria-expanded", String(open));
+  }
+
+  noteTitleInfo.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setTitleTipOpen(noteTitleTip.hidden);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!noteTitleTip.hidden && !event.target.closest("#note-title-tip")) setTitleTipOpen(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !noteTitleTip.hidden) {
+      setTitleTipOpen(false);
+      noteTitleInfo.focus();
+    }
+  });
 
   noteTitle.addEventListener("click", toggleAllSectionsFromTitle);
   noteTitle.addEventListener("keydown", (event) => {
