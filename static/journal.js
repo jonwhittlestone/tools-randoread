@@ -450,6 +450,9 @@
   function updateBarVisibility() {
     var dailyActive = dailyButton.classList.contains("active");
     bar.classList.toggle("hidden", !dailyActive);
+    // The bar is position:fixed over the page — reserve room for it so the
+    // end of the note can scroll clear of it (main-randoread.md 05.05.02).
+    document.body.classList.toggle("journal-bar-visible", dailyActive);
     input.disabled = !available;
     attachBtn.disabled = !available;
     refreshSendButtonState();

@@ -906,6 +906,15 @@ a:hover {
   display: none;
 }
 
+/* While the bar shows, extend the note's scroll area by the bar's footprint
+   — 16px offset + ~54px bar + ~20px status line above it + breathing room +
+   the phone's home-indicator inset — so the last heading can scroll clear of
+   it (main-randoread.md 05.05.02). On #note-scroll, not body: the note
+   scrolls inside that element, never the window. 24px is its usual padding. */
+body.journal-bar-visible #note-scroll {
+  padding-bottom: calc(24px + 110px + env(safe-area-inset-bottom, 0px));
+}
+
 .journal-attach-btn {
   flex: none;
   width: 36px;
