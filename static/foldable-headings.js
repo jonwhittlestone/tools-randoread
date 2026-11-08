@@ -72,10 +72,39 @@
     setFolded(heading, !heading.classList.contains("heading-folded"));
   });
 
+  // Fold or unfold every heading of one level at once — main-randoread.md
+  // 05.04 (tapping the Daily title). If any is expanded, all fold; if all
+  // are already folded, all unfold — so the first tap always gives a tidy
+  // outline. Goes through setFolded, same as the per-heading toggle, so the
+  // ▾/▸ arrows and aria-expanded stay in sync. Returns the new folded state
+  // (null if there were no headings of that level to toggle).
+  function toggleAllHeadings(container, level) {
+    if (!container) return null;
+    var headings = Array.prototype.slice.call(container.querySelectorAll("h" + level));
+    if (headings.length === 0) return null;
+    var fold = headings.some(function (h) {
+      return !h.classList.contains("heading-folded");
+    });
+    headings.forEach(function (h) {
+      setFolded(h, fold);
+    });
+    return fold;
+  }
+
+  // True if any heading of this level is currently expanded.
+  function anyHeadingExpanded(container, level) {
+    if (!container) return false;
+    return Array.prototype.some.call(container.querySelectorAll("h" + level), function (h) {
+      return !h.classList.contains("heading-folded");
+    });
+  }
+
   window.enhanceFoldableHeadings = enhanceFoldableHeadings;
   // Exposed so other standalone widgets can fold/unfold programmatically —
   // e.g. journal.js collapsing every section but the one it just wrote to,
   // right after a note reload, without duplicating this module's fold
   // semantics (see sectionElements' equal-or-higher-level rule).
   window.setHeadingFolded = setFolded;
+  window.toggleAllHeadings = toggleAllHeadings;
+  window.anyHeadingExpanded = anyHeadingExpanded;
 })();
